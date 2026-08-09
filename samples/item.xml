@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Root>
+ <ChainId>7290027600007</ChainId>
+ <SubChainId>1</SubChainId>
+ <StoreId>331</StoreId>
+ <BikoretNo>9</BikoretNo>
+ <Items Count="2">
+  <Item>
+   <PriceUpdateDate>2026-08-09 06:00</PriceUpdateDate>
+   <ItemCode>7290004131074</ItemCode>
+   <ItemName>חלב תנובה 3% שומן 1 ליטר</ItemName>
+   <ManufacturerName>תנובה</ManufacturerName>
+   <ManufactureCountry>IL</ManufactureCountry>
+   <UnitQty>ליטר</UnitQty><Quantity>1</Quantity>
+   <UnitOfMeasure>ליטר</UnitOfMeasure><bIsWeighted>0</bIsWeighted>
+   <QtyInPackage>1</QtyInPackage>
+   <ItemPrice>6.90</ItemPrice><UnitOfMeasurePrice>6.90</UnitOfMeasurePrice>
+   <AllowDiscount>1</AllowDiscount><ItemStatus>1</ItemStatus>
+  </Item>
+  <Item>
+   <PriceUpdateDate>2026-08-09 06:00</PriceUpdateDate>
+   <ItemCode>7290000066318</ItemCode>
+   <ItemName>קוטג' תנובה 5% 250 גרם</ItemName>
+   <ManufacturerName>תנובה</ManufacturerName>
+   <ItemPrice>5.80</ItemPrice><UnitOfMeasure>100 גרם</UnitOfMeasure>
+   <UnitOfMeasurePrice>2.32</UnitOfMeasurePrice><ItemStatus>1</ItemStatus>
+  </Item>
+ </Items>
+</Root>

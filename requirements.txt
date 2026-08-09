@@ -1,0 +1,3 @@
+il-supermarket-scraper
+openpyxl
+pandas

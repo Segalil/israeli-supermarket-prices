@@ -1,0 +1,18 @@
+# outputs & downloads
+out/
+dumps/
+*.xlsx
+!samples/**
+# python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+env/
+.eggs/
+*.egg-info/
+.pytest_cache/
+# os / editor
+.DS_Store
+.idea/
+.vscode/
