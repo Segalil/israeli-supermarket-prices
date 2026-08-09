@@ -717,16 +717,18 @@ function onboardingH() {
         </div>
       </div>
     </div>
-    <div class="ob-hero">
-      <div class="ob-blob"></div>
-      <div class="hero-card">
-        <div class="hero-card-title">הסל השבועי שלי</div>
-        ${preview}
+    <div class="ob-side">
+      <div class="ob-hero">
+        <div class="ob-blob"></div>
+        <div class="hero-card">
+          <div class="hero-card-title">הסל השבועי שלי</div>
+          ${preview}
+        </div>
+        ${winner}
       </div>
-      ${winner}
+      ${promoCarouselH(true)}
     </div>
-  </div>
-  <div class="ob-promo-strip">${promoCarouselH(true)}</div>`;
+  </div>`;
 }
 
 /* ---------- promotions carousel (main screen) ---------- */
