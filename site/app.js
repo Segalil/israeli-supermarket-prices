@@ -725,7 +725,8 @@ function onboardingH() {
       </div>
       ${winner}
     </div>
-  </div>`;
+  </div>
+  <div class="ob-promo-strip">${promoCarouselH(true)}</div>`;
 }
 
 /* ---------- promotions carousel (main screen) ---------- */
@@ -780,24 +781,24 @@ function promoCarouselData() {
   }
   return { cards: [...personal, ...fill].slice(0, 12), personalCount: personal.length };
 }
-function promoCarouselH() {
+function promoCarouselH(compact = false) {
   const { cards, personalCount } = promoCarouselData();
   if (!cards.length) return '';
   const title = personalCount
     ? '🏷 מבצעים בשבילך — על מוצרים שהזמנתם בעבר'
     : '🏷 המבצעים החמים היום';
-  return `<div class="promo-carousel">
+  return `<div class="promo-carousel${compact ? ' compact' : ''}">
     <div class="pc-head"><span class="block-kicker">${title}</span>
       <span class="pc-arrows">
         <button class="pc-arrow" data-action="pc-scroll" data-dir="1" aria-label="למבצעים הבאים">‹</button>
         <button class="pc-arrow" data-action="pc-scroll" data-dir="-1" aria-label="למבצעים הקודמים">›</button>
       </span></div>
-    <div class="pc-track" id="pcTrack" role="region" aria-label="מבצעים">` +
+    <div class="pc-track" role="region" aria-label="מבצעים">` +
     cards.map(({ pr, best }, i) => `
-      <div class="pc-card${personalCount && i < personalCount ? ' personal' : ''}">
+      <div class="pc-card${personalCount && i < personalCount ? ' personal' : ''}" title="${esc(best.desc)}">
         ${productVisual(pr, 'lg')}
         <span class="pc-name">${esc(pr.n)}</span>
-        <span class="promo-tag" title="${esc(best.desc)}">${esc(best.desc.slice(0, 26))}${best.desc.length > 26 ? '…' : ''}</span>
+        <span class="promo-tag">${esc(best.desc.slice(0, 26))}${best.desc.length > 26 ? '…' : ''}</span>
         <div class="pc-price-row">
           <s class="old-price">${money(best.base)}</s>
           <b class="pc-price">${money(best.unit)}</b>
@@ -808,6 +809,40 @@ function promoCarouselH() {
             data-m="${best.m}" aria-label="הוספה לרשימה">+</button>
         </div>
       </div>`).join('') + `</div></div>`;
+}
+
+/* auto-advance: one card every few seconds; pauses on hover/touch/focus and
+   is disabled under עצירת אנימציות or prefers-reduced-motion */
+let pcTimer = 0;
+function startCarouselAuto() {
+  clearInterval(pcTimer);
+  const tracks = [...document.querySelectorAll('.pc-track')];
+  if (!tracks.length) return;
+  if (a11y.noanim || matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  for (const t of tracks) {
+    if (t.dataset.autoWired) continue;
+    t.dataset.autoWired = '1';
+    const pause = () => { t.dataset.paused = '1'; };
+    const resume = () => { t.dataset.paused = ''; };
+    t.addEventListener('pointerenter', pause);
+    t.addEventListener('pointerleave', resume);
+    t.addEventListener('touchstart', pause, { passive: true });
+    t.addEventListener('touchend', () => setTimeout(resume, 5000), { passive: true });
+    t.addEventListener('focusin', pause);
+    t.addEventListener('focusout', resume);
+  }
+  pcTimer = setInterval(() => {
+    if (document.hidden) return;
+    for (const t of document.querySelectorAll('.pc-track')) {
+      if (t.dataset.paused === '1') continue;
+      const card = t.querySelector('.pc-card');
+      if (!card) continue;
+      const max = t.scrollWidth - t.clientWidth;
+      if (max <= 0) continue;
+      if (Math.abs(t.scrollLeft) >= max - 4) t.scrollTo({ left: 0, behavior: 'smooth' });
+      else t.scrollBy({ left: -(card.offsetWidth + 12), behavior: 'smooth' });
+    }
+  }, 3500);
 }
 
 const CATEGORY_ORDER = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 0];   // display order, "אחר" last
@@ -1357,6 +1392,7 @@ function applyA11y() {
   document.body.style.filter = filters.join(' ');
   c.toggle('a11y-contrast', a11y.contrast);
   saveLS(A11Y_KEY, a11y);
+  if (typeof startCarouselAuto === 'function') startCarouselAuto();
   const panel = $('.a11y-panel');
   if (panel) {
     panel.querySelectorAll('[data-a11y]').forEach(btn => {
@@ -1460,6 +1496,7 @@ function bindScreen() {
   }
   bindField('#pPhone', v => { state.profile.phone = v; saveLS(LS.profile, state.profile); });
   scanImages();
+  startCarouselAuto();
 }
 function bindField(sel, save) {
   const el = $(sel);
@@ -1580,9 +1617,13 @@ document.addEventListener('click', e => {
     }
     case 'cat-more': state.catLimit += 12; render(); break;
     case 'pc-scroll': {
-      const track = $('#pcTrack');
-      if (track) track.scrollBy({ left: (+btn.dataset.dir) * -Math.round(track.clientWidth * 0.8),
-        behavior: 'smooth' });
+      const track = btn.closest('.promo-carousel')?.querySelector('.pc-track');
+      if (track) {
+        track.dataset.paused = '1';            // manual control pauses auto-advance
+        setTimeout(() => { track.dataset.paused = ''; }, 6000);
+        track.scrollBy({ left: (+btn.dataset.dir) * -Math.round(track.clientWidth * 0.8),
+          behavior: 'smooth' });
+      }
       break;                                   // no re-render — keep scroll position
     }
     case 'add-deal': {

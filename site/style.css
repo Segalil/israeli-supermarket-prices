@@ -376,6 +376,18 @@ html.a11y-noanim *, html.a11y-noanim *::before, html.a11y-noanim *::after {
 .pc-foot { display: flex; align-items: center; justify-content: space-between; margin-top: auto; }
 .pc-chain { font-size: 11px; font-weight: 700; color: var(--brand-ink); }
 
+/* compact variant — the onboarding strip */
+.promo-carousel.compact .pc-card { flex: 0 0 142px; padding: 10px; gap: 6px; }
+.promo-carousel.compact .avatar.lg { height: 60px; font-size: 28px; }
+.promo-carousel.compact .pc-name { font-size: 11.5px; min-height: 30px; }
+.promo-carousel.compact .promo-tag { display: none; }
+.promo-carousel.compact .pc-price { font-size: 15px; }
+.promo-carousel.compact .pc-unit { font-size: 10px; }
+.promo-carousel.compact .old-price { font-size: 11px; }
+.ob-promo-strip { max-width: 1180px; margin: -44px auto 0; padding: 0 40px 56px; }
+@media (max-width: 1020px) { .ob-promo-strip { padding: 0 24px 48px; margin-top: -16px; } }
+@media (max-width: 680px) { .ob-promo-strip { padding: 0 16px 40px; } }
+
 .pop-block { margin-bottom: 28px; }
 .pop-block .block-kicker { margin-bottom: 12px; }
 .cat-chips { margin-bottom: 14px; }
