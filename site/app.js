@@ -4,6 +4,27 @@
 'use strict';
 
 const DATA_URL = 'data/products.json.gz';
+
+/* ---------- accounts (login/signup) ----------------------------------------
+   Real accounts run on Firebase Authentication (email+password + Google) with
+   per-user cloud sync of lists/orders/preferences in Firestore. To activate:
+   1. console.firebase.google.com → Add project (any name, Analytics optional)
+   2. Build → Authentication → Get started → enable "Email/Password" AND "Google"
+   3. Build → Firestore Database → Create database (production mode)
+   4. Firestore → Rules → paste and publish:
+        rules_version = '2';
+        service cloud.firestore {
+          match /databases/{database}/documents {
+            match /users/{uid} { allow read, write: if request.auth.uid == uid; }
+          }
+        }
+   5. Project settings → Your apps → Web app (</>) → copy the config object
+      and paste it below in place of `null`
+   6. Authentication → Settings → Authorized domains → add segalil.github.io
+   Until then the site runs in device-profile mode (no password, this browser
+   only). */
+const FIREBASE_CONFIG = null;
+
 const LS = {
   list: 'slim-list-v2',
   prefs: 'slim-prefs-v2',        // {active:{label:bool}, priority, address, visited, seeded}
@@ -115,6 +136,10 @@ const SAMPLE_LISTS = [
 const state = {
   screen: 'boot',
   routeParam: '',
+  auth: { mode: 'local', user: null, ready: false },
+  authMode: 'login',          // login | signup (auth screen tab)
+  authError: '',
+  authBusy: false,
   status: 'loading',          // loading | live | error
   errorMsg: '',
   date: '',
@@ -316,7 +341,10 @@ function attachAddressAutocomplete(input) {
 }
 
 /* ---------- persistence ---------- */
-function saveLS(key, val) { try { localStorage.setItem(key, JSON.stringify(val)); } catch (_) {} }
+function saveLS(key, val) {
+  try { localStorage.setItem(key, JSON.stringify(val)); } catch (_) {}
+  if (typeof SYNC_KEYS !== 'undefined' && SYNC_KEYS.includes(key)) scheduleCloudPush();
+}
 function loadLS(key, fallback) {
   try { const v = JSON.parse(localStorage.getItem(key)); return v ?? fallback; }
   catch (_) { return fallback; }
@@ -339,6 +367,153 @@ function restoreAll() {
   state.saved = loadLS(LS.saved, []);
   state.orders = loadLS(LS.orders, []);
   state.stats = loadLS(LS.stats, state.stats);
+}
+
+/* ---------- auth engine (Firebase when configured, device profile otherwise) ---------- */
+const SYNC_KEYS = [LS.list, LS.prefs, LS.profile, LS.saved, LS.orders, LS.stats];
+let cloudTimer = 0;
+
+function loadScript(src) {
+  return new Promise((resolve, reject) => {
+    const s = document.createElement('script');
+    s.src = src; s.onload = resolve; s.onerror = reject;
+    document.head.appendChild(s);
+  });
+}
+
+async function initAuth() {
+  if (!FIREBASE_CONFIG) { state.auth = { mode: 'local', user: null, ready: true }; return; }
+  try {
+    const v = '10.14.1';
+    await loadScript(`https://www.gstatic.com/firebasejs/${v}/firebase-app-compat.js`);
+    await Promise.all([
+      loadScript(`https://www.gstatic.com/firebasejs/${v}/firebase-auth-compat.js`),
+      loadScript(`https://www.gstatic.com/firebasejs/${v}/firebase-firestore-compat.js`),
+    ]);
+    firebase.initializeApp(FIREBASE_CONFIG);
+    state.auth = { mode: 'firebase', user: null, ready: false };
+    firebase.auth().onAuthStateChanged(async u => {
+      state.auth.user = u ? { uid: u.uid, email: u.email || '',
+        name: u.displayName || '' } : null;
+      state.auth.ready = true;
+      if (u) {
+        await cloudPull(u.uid);
+        if (!state.profile.name && u.displayName) {
+          state.profile.name = u.displayName;
+          saveLS(LS.profile, state.profile);
+        }
+        if (!state.profile.email && u.email) {
+          state.profile.email = u.email;
+          saveLS(LS.profile, state.profile);
+        }
+      }
+      render();
+    });
+  } catch (err) {
+    console.warn('auth unavailable, using device profile:', err);
+    state.auth = { mode: 'local', user: null, ready: true };
+  }
+}
+
+function scheduleCloudPush() {
+  if (state.auth.mode !== 'firebase' || !state.auth.user) return;
+  clearTimeout(cloudTimer);
+  cloudTimer = setTimeout(cloudPush, 1500);
+}
+async function cloudPush() {
+  const u = state.auth.user;
+  if (!u) return;
+  const data = { updatedAt: Date.now() };
+  for (const k of SYNC_KEYS) {
+    const v = localStorage.getItem(k);
+    if (v != null) data[k] = v;
+  }
+  try {
+    await firebase.firestore().collection('users').doc(u.uid).set(data);
+  } catch (err) { console.warn('cloud sync failed:', err); }
+}
+async function cloudPull(uid) {
+  try {
+    const snap = await firebase.firestore().collection('users').doc(uid).get();
+    if (snap.exists) {
+      const data = snap.data();
+      for (const k of SYNC_KEYS) {
+        if (typeof data[k] === 'string') localStorage.setItem(k, data[k]);
+      }
+      restoreAll();
+      if (state.byKey.size) restoreList();
+    } else {
+      cloudPush();                       // first login on this account: seed from device
+    }
+  } catch (err) { console.warn('cloud pull failed:', err); }
+}
+
+function authErrHe(err) {
+  const code = (err && err.code) || '';
+  const map = {
+    'auth/invalid-email': 'כתובת הדוא"ל אינה תקינה',
+    'auth/email-already-in-use': 'כבר קיים חשבון עם הדוא"ל הזה — נסו להתחבר',
+    'auth/weak-password': 'הסיסמה חלשה מדי — לפחות 6 תווים',
+    'auth/wrong-password': 'דוא"ל או סיסמה שגויים',
+    'auth/invalid-credential': 'דוא"ל או סיסמה שגויים',
+    'auth/user-not-found': 'לא נמצא חשבון עם הדוא"ל הזה — נסו להירשם',
+    'auth/too-many-requests': 'יותר מדי ניסיונות — נסו שוב מאוחר יותר',
+    'auth/popup-closed-by-user': 'חלון ההתחברות נסגר לפני שהסתיימה ההתחברות',
+    'auth/network-request-failed': 'בעיית רשת — בדקו את החיבור ונסו שוב',
+  };
+  return map[code] || 'ההתחברות נכשלה — נסו שוב';
+}
+
+async function authSubmit() {
+  const email = ($('#aEmail') || {}).value?.trim() || '';
+  const pass = ($('#aPass') || {}).value || '';
+  state.authError = '';
+  if (!email || !pass) { state.authError = 'נא למלא דוא"ל וסיסמה'; render(); return; }
+  state.authBusy = true; render();
+  try {
+    if (state.authMode === 'signup') {
+      const name = ($('#aName') || {}).value?.trim() || '';
+      const addr = ($('#aAddress') || {}).value?.trim() || '';
+      const cred = await firebase.auth().createUserWithEmailAndPassword(email, pass);
+      if (name) await cred.user.updateProfile({ displayName: name });
+      state.profile.name = name || state.profile.name;
+      state.profile.email = email;
+      if (addr) state.address = addr;
+      saveLS(LS.profile, state.profile);
+      toast('החשבון נוצר — ברוכים הבאים! ☁');
+    } else {
+      await firebase.auth().signInWithEmailAndPassword(email, pass);
+      toast('התחברת בהצלחה ☁');
+    }
+    state.visited = true; persistPrefs();
+    state.authBusy = false;
+    nav('#/build');
+  } catch (err) {
+    state.authError = authErrHe(err);
+    state.authBusy = false; render();
+  }
+}
+async function authGoogle() {
+  state.authError = ''; state.authBusy = true; render();
+  try {
+    await firebase.auth().signInWithPopup(new firebase.auth.GoogleAuthProvider());
+    state.visited = true; persistPrefs();
+    state.authBusy = false;
+    toast('התחברת עם Google ☁');
+    nav('#/build');
+  } catch (err) {
+    state.authError = authErrHe(err);
+    state.authBusy = false; render();
+  }
+}
+async function authReset() {
+  const email = ($('#aEmail') || {}).value?.trim() || '';
+  if (!email) { state.authError = 'מלאו את שדה הדוא"ל ולחצו שוב על "שכחתי סיסמה"'; render(); return; }
+  try {
+    await firebase.auth().sendPasswordResetEmail(email);
+    state.authError = '';
+    toast('נשלח מייל לאיפוס הסיסמה 📧');
+  } catch (err) { state.authError = authErrHe(err); render(); }
 }
 
 /* ---------- data ---------- */
@@ -655,7 +830,7 @@ function recordComparison() {
 function statusPillH() {
   if (state.status === 'live') {
     return `<button class="pill-status live" data-action="reload" title="לחצו לרענון">
-      <span class="dot"></span><span class="pill-text">מחירים חיים · ${esc(state.date)} · ${state.products.length.toLocaleString('he-IL')} מוצרים</span></button>`;
+      <span class="dot"></span><span class="pill-text">מחירים מעודכנים · ${esc(state.date)} · ${state.products.length.toLocaleString('he-IL')} מוצרים</span></button>`;
   }
   if (state.status === 'loading') {
     return `<span class="pill-status wait"><span class="dot"></span><span class="pill-text">טוען מחירים מהצילום היומי…</span></span>`;
@@ -664,10 +839,11 @@ function statusPillH() {
 }
 function navH() {
   const links = [
-    ['build', 'הרשימה'], ['results', 'השוואה'], ['saved', 'רשימות שמורות'], ['profile', 'הפרופיל'],
+    ['build', 'הרשימה'], ['results', 'השוואה'], ['saved', 'רשימות שמורות'], ['profile', 'פרופיל'],
   ].map(([key, label]) =>
     `<a class="nav-link${state.screen === key ? ' on' : ''}" href="#/${key}">${label}</a>`).join('');
-  const initial = (state.profile.name || 'א').trim().charAt(0);
+  const initial = (state.profile.name || state.auth.user?.name ||
+    state.auth.user?.email || 'א').trim().charAt(0);
   return `<header class="topnav">
     <div class="nav-right">
       <a class="brand" href="#/onboarding" aria-label="ליםSlim — מסך פתיחה">${logoSvg(34, true)}<span class="brand-name" dir="ltr">ליםSlim</span></a>
@@ -676,7 +852,9 @@ function navH() {
     <div class="nav-left">
       ${statusPillH()}
       ${state.address ? `<span class="nav-address">משלוח אל ${esc(state.address)}</span>` : ''}
-      <a class="nav-avatar" href="#/profile" aria-label="הפרופיל">${esc(initial)}</a>
+      ${state.auth.mode === 'firebase' && !state.auth.user
+        ? `<a class="nav-login" href="#/setup">התחברות</a>`
+        : `<a class="nav-avatar" href="#/profile" aria-label="פרופיל">${esc(initial)}</a>`}
     </div>
   </header>`;
 }
@@ -726,7 +904,7 @@ function onboardingH() {
         <div class="field"><label>רשתות להשוואה</label><div class="chips">${chips || '<span class="muted">טוען רשתות…</span>'}</div></div>
         <div class="ob-ctas">
           <button class="btn-primary lg" data-action="go-build">בניית הרשימה שלי</button>
-          <button class="btn-outline" data-action="go-setup">הגדרת פרופיל</button>
+          <button class="btn-outline" data-action="go-setup">${state.auth.mode === 'firebase' ? 'התחברות / הרשמה' : 'הגדרת פרופיל'}</button>
         </div>
       </div>
     </div>
@@ -782,7 +960,7 @@ function promoCarouselData() {
   }
   all.sort((a, b) => b.best.save - a.best.save || avail(b.pr) - avail(a.pr));
   let personal = [];
-  const ordered = state.profile.name ? orderedProductKeys() : new Set();
+  const ordered = (state.profile.name || state.auth.user) ? orderedProductKeys() : new Set();
   if (ordered.size) personal = all.filter(x => ordered.has(x.pr.k));
   const seenKeys = new Set(personal.map(x => x.pr.k));
   const seenNames = new Set(personal.map(x => x.pr.nLow.split(' ').slice(0, 2).join(' ')));
@@ -1212,7 +1390,8 @@ function savedH() {
     return `<div class="card saved-card">
       <div class="saved-head"><span class="block-kicker">${esc(s.kicker)}</span>
         <button class="sel-round${sel ? ' on' : ''}" data-action="toggle-select" data-id="${esc(s.id)}"
-          aria-label="בחירה">${sel ? '✓' : '+'}</button></div>
+          title="${sel ? 'הסרת הרשימה מהאיחוד' : 'הוסף רשימה לצורך איחוד רשימות'}"
+          aria-label="${sel ? 'הסרת הרשימה מהאיחוד' : 'הוסף רשימה לצורך איחוד רשימות'}">${sel ? '✓' : '+'}</button></div>
       <div class="saved-name">${esc(s.name)}</div>
       <div class="saved-preview">${esc(prods.slice(0, 4).map(p => p.n.split(' ').slice(0, 2).join(' ')).join(', '))}${prods.length > 4 ? ' ועוד' : ''}</div>
       <div class="saved-foot"><span class="muted sm">${prods.length} מוצרים</span><span class="saved-price">${ils0(best)}</span></div>
@@ -1236,9 +1415,38 @@ function savedH() {
 }
 
 function setupH() {
-  return `<div class="auth">
-    <div class="auth-form">
-      <div class="ob-brand">${logoSvg(44, false)}<span dir="ltr">ליםSlim</span></div>
+  const fb = state.auth.mode === 'firebase';
+  const signup = state.authMode === 'signup';
+  const form = fb ? `
+      <h2 class="page-title">${signup ? 'פתיחת חשבון' : 'ברוכים השבים'}</h2>
+      <p class="page-sub">${signup
+        ? 'הרשימות, הכתובת וההעדפות יסונכרנו לחשבון ויהיו זמינים מכל מכשיר.'
+        : 'התחברו כדי לקבל את הרשימות וההעדפות שלכם מכל מכשיר.'}</p>
+      <div class="seg auth-tabs">
+        <button class="seg-opt${!signup ? ' on' : ''}" data-action="auth-tab" data-mode="login">כניסה</button>
+        <button class="seg-opt${signup ? ' on' : ''}" data-action="auth-tab" data-mode="signup">הרשמה</button>
+      </div>
+      ${signup ? `<div class="field"><label>שם מלא</label>
+        <input id="aName" class="input" placeholder="דנה כהן" value="${esc(state.profile.name)}"></div>` : ''}
+      <div class="field"><label>דוא״ל</label>
+        <input id="aEmail" class="input" type="email" placeholder="you@example.com"
+          value="${esc(state.profile.email)}" autocomplete="email"></div>
+      <div class="field"><label>סיסמה</label>
+        <input id="aPass" class="input" type="password" placeholder="לפחות 6 תווים"
+          autocomplete="${signup ? 'new-password' : 'current-password'}"></div>
+      ${signup ? `<div class="field"><label>כתובת למשלוח (לא חובה)</label>
+        <input id="aAddress" class="input" placeholder="רחוב, מספר, עיר" value="${esc(state.address)}"></div>` : ''}
+      ${!signup ? `<button class="btn-ghost auth-forgot" data-action="auth-reset">שכחתי סיסמה</button>` : ''}
+      ${state.authError ? `<div class="auth-error">${esc(state.authError)}</div>` : ''}
+      <button class="btn-primary block lg" data-action="auth-submit" ${state.authBusy ? 'disabled' : ''}>
+        ${state.authBusy ? 'רק רגע…' : (signup ? 'יצירת חשבון' : 'כניסה')}</button>
+      <div class="auth-or"><span></span>או<span></span></div>
+      <button class="btn-outline block google-btn" data-action="auth-google" ${state.authBusy ? 'disabled' : ''}>
+        <svg viewBox="0 0 48 48" width="18" height="18" aria-hidden="true"><path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9.1 3.6l6.8-6.8C35.7 2.4 30.2 0 24 0 14.6 0 6.5 5.4 2.6 13.2l7.9 6.2C12.4 13.6 17.7 9.5 24 9.5z"/><path fill="#4285F4" d="M46.5 24.5c0-1.6-.1-3.1-.4-4.5H24v9h12.7c-.6 3-2.3 5.5-4.8 7.2l7.7 6c4.5-4.2 6.9-10.3 6.9-17.7z"/><path fill="#FBBC05" d="M10.5 28.6c-.5-1.5-.8-3-.8-4.6s.3-3.1.8-4.6l-7.9-6.2C.9 16.5 0 20.1 0 24s.9 7.5 2.6 10.8l7.9-6.2z"/><path fill="#34A853" d="M24 48c6.2 0 11.4-2 15.2-5.6l-7.7-6c-2.1 1.4-4.7 2.3-7.5 2.3-6.3 0-11.6-4.1-13.5-9.9l-7.9 6.2C6.5 42.6 14.6 48 24 48z"/></svg>
+        התחברות עם Google</button>
+      <p class="fine center">ההרשמה מהווה הסכמה ל<a href="#/terms">תנאי השימוש ומדיניות הפרטיות</a>.</p>
+      <button class="btn-ghost block" data-action="go-build">המשך ללא חשבון</button>`
+    : `
       <h2 class="page-title">הגדרת פרופיל</h2>
       <p class="page-sub">הפרטים — שם, כתובת ורשימות הקניות — נשמרים ומאובטחים בהתאם לחוק
         ול<a href="#/terms">תנאי השימוש ומדיניות הפרטיות</a>.</p>
@@ -1249,7 +1457,11 @@ function setupH() {
       <div class="field"><label>כתובת למשלוח</label>
         <input id="fAddress" class="input" placeholder="רחוב, מספר, עיר" value="${esc(state.address)}"></div>
       <button class="btn-primary block lg" data-action="save-profile">שמירה והמשך</button>
-      <button class="btn-ghost block" data-action="go-build">דילוג בינתיים</button>
+      <button class="btn-ghost block" data-action="go-build">דילוג בינתיים</button>`;
+  return `<div class="auth">
+    <div class="auth-form">
+      <div class="ob-brand">${logoSvg(44, false)}<span dir="ltr">ליםSlim</span></div>
+      ${form}
     </div>
     <div class="auth-aside">
       <div class="auth-blob a"></div><div class="auth-blob b"></div>
@@ -1281,9 +1493,13 @@ function profileH() {
     <div class="pro-grid">
       <div>
         <div class="card pro-head">
-          ${avatar(p.name || 'א', 'xl')}
-          <div class="pro-id"><h2>${esc(p.name || 'אורח/ת')}</h2><div class="muted">${esc(p.email || 'לא הוזן דוא"ל')}</div></div>
-          <button class="btn-outline" data-action="go-setup">עריכת פרופיל</button>
+          ${avatar(p.name || state.auth.user?.email || 'א', 'xl')}
+          <div class="pro-id"><h2>${esc(p.name || state.auth.user?.name || 'אורח/ת')}</h2>
+            <div class="muted">${esc(state.auth.user?.email || p.email || 'לא הוזן דוא"ל')}
+              ${state.auth.user ? ' · <span class="sync-badge">☁ מסונכרן לחשבון</span>' : ''}</div></div>
+          ${state.auth.user
+            ? `<button class="btn-outline" data-action="sign-out">יציאה מהחשבון</button>`
+            : `<button class="btn-outline" data-action="go-setup">${state.auth.mode === 'firebase' ? 'התחברות / הרשמה' : 'עריכת פרופיל'}</button>`}
         </div>
         <div class="card">
           <h4>פרטי משלוח</h4>
@@ -1713,6 +1929,16 @@ document.addEventListener('click', e => {
       toast('הפרופיל נשמר בדפדפן');
       nav('#/build'); break;
     }
+    case 'auth-tab':
+      state.authMode = btn.dataset.mode;
+      state.authError = '';
+      render(); break;
+    case 'auth-submit': authSubmit(); break;
+    case 'auth-google': authGoogle(); break;
+    case 'auth-reset': authReset(); break;
+    case 'sign-out':
+      firebase.auth().signOut().then(() => { toast('התנתקת מהחשבון'); nav('#/build'); });
+      break;
     case 'reset-profile': {
       if (!confirm('למחוק את הפרופיל, הרשימות וההיסטוריה מהדפדפן?')) break;
       Object.values(LS).forEach(k => localStorage.removeItem(k));
@@ -1725,5 +1951,6 @@ window.addEventListener('hashchange', route);
 document.addEventListener('DOMContentLoaded', () => {
   restoreAll();
   mountA11y();
+  initAuth();
   loadData().then(() => route());
 });

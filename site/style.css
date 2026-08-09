@@ -571,6 +571,28 @@ html.a11y-noanim *, html.a11y-noanim *::before, html.a11y-noanim *::after {
   background: var(--surface); color: var(--brand); display: flex; align-items: center; justify-content: center;
   font-size: 14px; font-weight: 700;
 }
+.auth-tabs { display: flex; width: 100%; margin-bottom: 20px; }
+.auth-tabs .seg-opt { flex: 1; text-align: center; justify-content: center; }
+.auth-forgot { align-self: flex-start; padding: 0 0 10px; font-size: 13px; color: var(--brand-ink); }
+.auth-error {
+  background: var(--miss-bg); color: var(--miss-ink);
+  border-radius: var(--radius-sm); padding: 10px 16px; font-size: 14px;
+  font-weight: 600; margin-bottom: 12px;
+}
+.auth-or {
+  display: flex; align-items: center; gap: 12px; color: var(--text-3);
+  font-size: 13px; margin: 12px 0 2px;
+}
+.auth-or span { flex: 1; height: 1px; background: var(--divider); }
+.google-btn { display: flex; align-items: center; justify-content: center; gap: 10px; }
+.google-btn svg { flex: none; }
+.nav-login {
+  border: 1px solid var(--brand-line); color: var(--surface);
+  border-radius: var(--pill); padding: 8px 18px; font-size: 14px; font-weight: 700;
+  text-decoration: none; white-space: nowrap;
+}
+.nav-login:hover { background: var(--brand); border-color: var(--brand); color: var(--surface); }
+.sync-badge { color: var(--brand-ink); font-size: 12px; font-weight: 700; }
 
 /* ---------- profile ---------- */
 .pro-grid { display: grid; grid-template-columns: minmax(0, 1fr) 380px; gap: 36px; align-items: start; }

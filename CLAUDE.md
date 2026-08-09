@@ -83,6 +83,13 @@ Downloading is done via the il-supermarket-scraper library (PyPI).
     computes the next typical 4h window (no Shabbat) from CHAIN_META.speed;
   * merged products keep aliases → byKey maps alias keys too, so saved lists
     survive consolidation.
+  * auth: FIREBASE_CONFIG=null → device-profile mode; paste a Firebase web
+    config to enable real login/signup (email+password + Google popup +
+    password reset) with per-user Firestore sync — SYNC_KEYS localStorage
+    slices are pushed debounced into users/{uid} and pulled on login (cloud
+    wins if the doc exists, else the device state seeds it). SDK loads
+    lazily from gstatic (compat builds); any init failure degrades to local.
+    Firestore rules + setup steps live in the FIREBASE_CONFIG comment.
   All persistence is localStorage (slim-*-v2 keys, migrates smart-basket-list-v1).
   Loads the gzipped JSON via DecompressionStream (magic-byte sniffing).
   Hebrew search matching: word-prefix with exact-word priority (see keywordScore)
