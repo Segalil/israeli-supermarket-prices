@@ -114,6 +114,9 @@ const state = {
   priority: 'price',
   mode: 'single',             // results mode: single | split
   address: '',
+  categories: [],
+  catFilter: null,            // category index being browsed, null = popular
+  catLimit: 12,
   profile: { name: '', email: '', phone: '' },
   saved: [],
   orders: [],
@@ -343,8 +346,9 @@ async function loadData() {
     const data = JSON.parse(text);
     state.date = data.date || '';
     state.chains = data.chains || [];
-    state.products = (data.products || []).map(([k, n, u, b, p, al, pm]) =>
-      ({ k, n, u, b, p, al, pm, nLow: n.toLowerCase(), bLow: (b || '').toLowerCase() }));
+    state.categories = data.categories || [];
+    state.products = (data.products || []).map(([k, n, u, b, p, al, pm, c]) =>
+      ({ k, n, u, b, p, al, pm, c: c || 0, nLow: n.toLowerCase(), bLow: (b || '').toLowerCase() }));
     state.byKey = new Map();
     for (const pr of state.products) {
       state.byKey.set(pr.k, pr);
@@ -724,9 +728,9 @@ function onboardingH() {
   </div>`;
 }
 
-function buildH() {
-  const t = computeRows();
-  const popular = state.popular.map(pr => `
+const CATEGORY_ORDER = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 0];   // display order, "אחר" last
+function popTileH(pr) {
+  return `
     <div class="pop-tile">
       ${productVisual(pr, 'lg')}
       <span class="pop-name">${esc(pr.n)}</span>
@@ -734,7 +738,33 @@ function buildH() {
         <span class="pop-from">${esc(fromLabel(pr))}</span>
         <button class="add-round" data-action="add" data-key="${esc(pr.k)}" aria-label="הוספה">+</button>
       </div>
-    </div>`).join('');
+    </div>`;
+}
+function categoryProducts(ci) {
+  return state.products
+    .filter(pr => pr.c === ci)
+    .sort((a, b) => avail(b) - avail(a) || minActivePrice(a, true) - minActivePrice(b, true));
+}
+function buildH() {
+  const t = computeRows();
+  const catChips = `<div class="chips cat-chips">
+    <button class="chip${state.catFilter == null ? ' on' : ''}" data-action="category" data-cat="">מוצרים נפוצים</button>` +
+    CATEGORY_ORDER.filter(ci => state.categories[ci]).map(ci =>
+      `<button class="chip${state.catFilter === ci ? ' on' : ''}" data-action="category" data-cat="${ci}">${esc(state.categories[ci])}</button>`).join('') +
+    `</div>`;
+  let gridTitle, gridTiles, moreBtn = '';
+  if (state.catFilter == null) {
+    gridTitle = 'מוצרים נפוצים';
+    gridTiles = state.popular.map(popTileH).join('');
+  } else {
+    const all = categoryProducts(state.catFilter);
+    gridTitle = `${state.categories[state.catFilter]} · ${all.length.toLocaleString('he-IL')} מוצרים`;
+    gridTiles = all.slice(0, state.catLimit).map(popTileH).join('');
+    if (all.length > state.catLimit) {
+      moreBtn = `<button class="btn-outline block" data-action="cat-more">הצגת עוד מוצרים (${(all.length - state.catLimit).toLocaleString('he-IL')} נוספים)</button>`;
+    }
+  }
+  const popular = gridTiles;
   const rows = t.items.map(({ pr, qty }) => {
     const promo = activeLabels().map(l => promoAt(pr, l)).find(Boolean);
     return `
@@ -773,8 +803,10 @@ function buildH() {
           <div id="suggestBox" class="suggest" hidden></div>
         </div>
         <div class="pop-block">
-          <div class="block-kicker">מוצרים נפוצים</div>
+          ${catChips}
+          <div class="block-kicker">${esc(gridTitle)}</div>
           <div class="pop-grid">${popular}</div>
+          ${moreBtn}
         </div>
         ${noteH()}
         <div class="card list-card">
@@ -1374,7 +1406,7 @@ function renderSuggest(query) {
   box.innerHTML = top.map(([, pr]) => `
     <button class="suggest-row" data-action="add-search" data-key="${esc(pr.k)}">
       <span class="sug-main"><span class="sug-name">${esc(pr.n)}</span>
-      <span class="sug-sub">${esc([pr.b, pr.u].filter(Boolean).join(' · ') || 'ללא פרטים')}</span></span>
+      <span class="sug-sub">${esc([pr.c ? state.categories[pr.c] : '', pr.b, pr.u].filter(Boolean).join(' · ') || 'ללא פרטים')}</span></span>
       <span class="sug-from">${esc(fromLabel(pr))}</span>
     </button>`).join('');
   box.hidden = false;
@@ -1455,6 +1487,13 @@ document.addEventListener('click', e => {
       persistPrefs(); render(); break;
     }
     case 'priority': state.priority = btn.dataset.priority; persistPrefs(); render(); break;
+    case 'category': {
+      const v = btn.dataset.cat;
+      state.catFilter = v === '' ? null : parseInt(v, 10);
+      state.catLimit = 12;
+      render(); break;
+    }
+    case 'cat-more': state.catLimit += 12; render(); break;
     case 'mode': state.mode = btn.dataset.mode; render(); break;
     case 'pick': nav('#/basket/' + encodeURIComponent(btn.dataset.chain)); break;
     case 'toggle-sub': {

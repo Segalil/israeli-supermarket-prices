@@ -344,6 +344,9 @@ html.a11y-noanim *, html.a11y-noanim *::before, html.a11y-noanim *::after {
 
 .pop-block { margin-bottom: 28px; }
 .pop-block .block-kicker { margin-bottom: 12px; }
+.cat-chips { margin-bottom: 14px; }
+.cat-chips .chip { padding: 7px 14px; font-size: 13px; }
+.pop-block .btn-outline.block { margin-top: 14px; }
 .pop-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
 .pop-tile {
   border: 1px solid var(--border); background: var(--surface); border-radius: var(--radius-sm);

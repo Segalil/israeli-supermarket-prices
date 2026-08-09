@@ -45,7 +45,7 @@ def test_merges_same_barcode_across_chains():
     ])
     assert data["chains"] == ["שופרסל", "רמי לוי"]
     assert len(data["products"]) == 1
-    key, name, unit, brand, prices, aliases, promos = data["products"][0]
+    key, name, unit, brand, prices, aliases, promos, cat = data["products"][0]
     assert key == "7290004131074"
     assert name == "חלב תנובה 3% שומן 1 ליטר"   # longest name wins
     assert prices == [6.90, 5.90]
@@ -95,7 +95,7 @@ def test_consolidates_same_name_different_barcodes():
         row("רמי לוי", "7290000000002", "3% חלב תנובה 1 ליטר", "5.90"),
     ])
     assert len(data["products"]) == 1
-    key, name, unit, brand, prices, aliases, promos = data["products"][0]
+    key, name, unit, brand, prices, aliases, promos, cat = data["products"][0]
     assert key.startswith("n:")
     assert prices == [6.90, 5.90]
     assert set(aliases) == {"7290000000001", "7290000000002"}   # saved lists survive
@@ -158,6 +158,37 @@ def test_club_promo_flagged():
     assert data["products"][0][6][0][2] == 1       # PROMO_CLUB flag
 
 
+def test_category_classification():
+    from israeli_prices.basket import CATEGORIES, classify_category
+    cases = {
+        "חלב טרי 3% 1 ליטר": "חלב, ביצים וגבינות",
+        "שוקולד חלב 100 גרם": "חטיפים ומתוקים",     # snack, not dairy
+        "חלבה במשקל": "חטיפים ומתוקים",              # halva, not dairy
+        "רסק עגבניות 100 גרם": "שימורים ובישול",     # phrase beats produce
+        "עגבניות שרי": "פירות וירקות",
+        "מלפפונים במלח 7-9": "שימורים ובישול",       # pickles, not produce
+        "תפוח אדמה לבן": "פירות וירקות",
+        "פלפל שחור גרוס": "שימורים ובישול",          # spice, not produce
+        "גלידה וניל": "קפואים",
+        "נייר טואלט 32 גליל": "ניקיון וחד־פעמי",
+        "שמפו לשיער יבש": "טואלטיקה והיגיינה",
+        "לחם אחיד פרוס": "לחם ומאפים",
+        "עוגת גבינה": "לחם ומאפים",                  # bakery beats dairy
+        "טונה בשמן 4*160": "שימורים ובישול",
+        "בירה גולדסטאר": "משקאות",
+        "שניצל עוף טרי": "בשר, עוף ודגים",
+        "ביצים L תריסר": "חלב, ביצים וגבינות",
+        "מוצר עלום כלשהו": "אחר",
+    }
+    for name, expected in cases.items():
+        assert CATEGORIES[classify_category(name)] == expected, name
+
+
+def test_products_carry_category_index():
+    data = build_site_data([row("שופרסל", "7290004131074", "חלב תנובה", "6.90")])
+    assert data["categories"][data["products"][0][7]] == "חלב, ביצים וגבינות"
+
+
 def test_invalid_or_zero_price_rows_skipped():
     data = build_site_data([
         row("שופרסל", "7290004131074", "חלב", "0"),
@@ -207,7 +238,7 @@ def test_real_snapshot_roundtrip(tmp_path):
     write_site_data(data, str(out))
     parsed = json.loads(gzip.decompress(out.read_bytes()))
     assert parsed["chains"] == data["chains"]
-    assert all(len(p) == 7 and len(p[4]) == len(data["chains"])
+    assert all(len(p) == 8 and len(p[4]) == len(data["chains"])
                for p in parsed["products"])
 
 

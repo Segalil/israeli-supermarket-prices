@@ -52,8 +52,13 @@ Downloading is done via the il-supermarket-scraper library (PyPI).
     wrong price.
 - build_site_data.py — CLI: newest data/israeli_prices_*.csv.gz (+ promos csv) ->
   site/data/products.json.gz (gitignored; schema
-  {date, chains, products:[[key,name,unit,brand,[price|null],aliases|null,
-  [[promoPrice|null,desc,flags]|null]|null]]}).
+  {date, chains, categories, products:[[key,name,unit,brand,[price|null],
+  aliases|null, [[promoPrice|null,desc,flags,minQty]|null]|null, categoryIdx]]}).
+  Categories come from classify_category in basket.py — keyword rules with a
+  flavor-suffix cut ("בטעם…" is ignored) and most-generic-last ordering
+  (produce runs last); ~67% of products classify, index 0 = "אחר". When tuning
+  keywords, keep the order-sensitivity tests in test_category_classification
+  green (שוקולד חלב → snacks, רוטב עגבניות → pantry, etc.).
 - site/ — "סלים=Slim", a static RTL Hebrew SPA (vanilla JS, no deps) implementing
   the Slim product design (basket-with-equals logo, Suez One + Assistant fonts,
   #f7f4f1 ground / #35858e teal, pill controls, 28px cards; tokens at the top of
