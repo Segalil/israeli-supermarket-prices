@@ -53,6 +53,19 @@ const CHAIN_META = {
 };
 const FALLBACK_META = { initial: '?', fee: 30, min: 200, speed: 2, delivery: 'nationwide' };
 
+/* Chain logos — TRADEMARKS of their owners. Ship a logo ONLY with the chain's
+   permission: drop the approved file in site/logos/ and map it here; chains
+   without an entry keep the neutral initial avatar. */
+const CHAIN_LOGOS = {
+  // 'שופרסל': 'logos/shufersal.png',
+  // 'רמי לוי': 'logos/rami-levy.png',
+};
+function chainVisual(label, cls = '') {
+  const src = CHAIN_LOGOS[label];
+  if (!src) return avatar(meta(label).initial, 'chain ' + cls);
+  return `<span class="avatar chain pimg ${cls}"><img src="${src}" alt="${esc(label)}" loading="lazy"></span>`;
+}
+
 /* keyword → emoji fallback when no product photo is found */
 const EMOJI_RULES = [
   ['חלב', '🥛'], ['שוקו ', '🥛'], ['יוגורט', '🥛'], ['משקה', '🥤'],
@@ -972,7 +985,7 @@ function resultsH() {
       const isBest = r === t.cheapest;
       const slot = nextSlot(r.label);
       return `<div class="res-card${isBest ? ' best' : ''}">
-        ${avatar(r.m.initial, 'chain')}
+        ${chainVisual(r.label)}
         <div class="res-main">
           <div class="res-name-row">
             <span class="res-name">${esc(r.label)} אונליין</span>
@@ -1014,7 +1027,7 @@ function resultsH() {
       <div class="split-grid">` + sp.groups.map(g => `
         <div class="card split-card">
           <div class="split-card-head">
-            <span class="split-chain">${avatar(g.m.initial, 'chain sm')}${esc(g.label)} אונליין</span>
+            <span class="split-chain">${chainVisual(g.label, 'sm')}${esc(g.label)} אונליין</span>
             <span class="muted sm">${g.lines.length} מוצרים</span>
           </div>
           ${g.lines.map(l => `<div class="split-line"><span>${esc(l.pr.n)}${l.qty > 1 ? ' ×' + l.qty : ''}</span>
@@ -1132,7 +1145,7 @@ function basketH() {
           ${subsH}</div>` : ''}
       </div>
       <aside class="side-card elevated checkout">
-        <div class="co-head">${avatar(m.initial, 'chain')}<span>${esc(label)} אונליין</span></div>
+        <div class="co-head">${chainVisual(label)}<span>${esc(label)} אונליין</span></div>
         <div class="co-rows">
           <div class="co-row"><span class="muted">סל המוצרים (${lines.length})</span><b>${money(r.sub)}</b></div>
           ${r.promoSaved > 0.005 ? `<div class="co-row promo"><span class="muted">🏷 כבר כולל מבצעים בשווי</span><b>${money(r.promoSaved)}</b></div>` : ''}
@@ -1323,7 +1336,7 @@ function termsH() {
       <h4>4. קניין רוחני</h4>
       <p>© כל הזכויות באתר, בעיצובו ובסימניו שמורות ל־Segolan Holdings. אין להעתיק,
       לשכפל, להפיץ או לעשות שימוש מסחרי בתכני האתר ללא אישור מראש ובכתב מהחברה.
-      שמות הרשתות וסימני המסחר המוזכרים באתר שייכים לבעליהם.</p>
+      שמות הרשתות, הלוגואים וסימני המסחר המוזכרים באתר שייכים לבעליהם; אזכורם נועד לזיהוי ולהשוואת מחירים בלבד ואין בו כדי להעיד על חסות, שיתוף פעולה או קשר מסחרי עם החברה.</p>
       <h4>5. מקורות מידע</h4>
       <p>נתוני המחירים והמבצעים: מיזם <a href="https://www.gov.il/he/pages/cpfta_prices_regulations"
       target="_blank" rel="noopener">שקיפות המחירים</a> של משרד הכלכלה והתעשייה, מתוך
