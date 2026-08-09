@@ -934,7 +934,6 @@ function buildH() {
             placeholder="חיפוש מוצר — חלב, ביצים, אורז…">
           <div id="suggestBox" class="suggest" hidden></div>
         </div>
-        ${promoCarouselH()}
         <div class="pop-block">
           ${catChips}
           <div class="block-kicker">${esc(gridTitle)}</div>
@@ -960,6 +959,7 @@ function buildH() {
           <button class="btn-primary block" data-action="go-results">השוואת מחירים</button>
           <button class="btn-outline block" data-action="save-list">שמירת הרשימה</button>
         </div>
+        ${promoCarouselH(true)}
       </aside>
     </div>
   </div>`;
