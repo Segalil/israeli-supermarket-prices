@@ -1221,7 +1221,7 @@ function termsH() {
       שלישיים אלא כנדרש על פי דין. חלק מהנתונים נשמר גם באחסון המקומי של דפדפן
       המשתמש לנוחותו. בהתאם לחוק, כל משתמש רשאי לעיין במידע השמור עליו ולבקש את
       תיקונו או מחיקתו בפנייה לדוא"ל
-      <a href="mailto:segolen.holdings@gmail.com">‫segolen.holdings@gmail.com‬</a>.
+      <a href="mailto:segolen.holdings@gmail.com">segolen.holdings@gmail.com</a>.
       חיפוש כתובת ותמונות מוצרים כרוכים בפנייה לשירותים חיצוניים (OpenStreetMap /
       Open Food Facts) בהתאם לתנאי אותם שירותים.</p>
       <h4>7. שינויים ודין חל</h4>
@@ -1253,7 +1253,7 @@ function accessibilityH() {
       מפעיליהם. אנו ממשיכים לפעול לשיפור הנגישות באופן שוטף.</p>
       <h4>פנייה בנושא נגישות</h4>
       <p>נתקלתם בקושי או שיש לכם הצעה לשיפור? נשמח לשמוע ולטפל בהקדם:
-      Segolan Holdings — דוא"ל: <a href="mailto:asegalil1@gmail.com">asegalil1@gmail.com</a>.</p>
+      Segolan Holdings — דוא"ל: <a href="mailto:segolen.holdings@gmail.com">segolen.holdings@gmail.com</a>.</p>
     </div>
   </div>`;
 }
