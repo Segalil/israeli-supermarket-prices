@@ -1,0 +1,53 @@
+name: Daily price snapshot
+
+on:
+  schedule:
+    - cron: "0 5 * * *"      # 05:00 UTC = 08:00 בשעון ישראל
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: daily-prices
+  cancel-in-progress: false
+
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Build price database
+        run: python build_price_db.py
+
+      - name: Archive dated snapshot (compressed CSV)
+        run: |
+          mkdir -p data
+          DATE=$(date +%F)
+          for f in out/israeli_prices_*.csv; do
+            gzip -c "$f" > "data/israeli_prices_${DATE}.csv.gz"
+          done
+          ls -la data
+
+      - name: Commit and push snapshot
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data
+          if git diff --cached --quiet; then
+            echo "No changes to commit."
+          else
+            git commit -m "Daily price snapshot: $(date +%F)"
+            git push
+          fi
