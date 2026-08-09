@@ -652,7 +652,7 @@ function navH() {
   const initial = (state.profile.name || 'א').trim().charAt(0);
   return `<header class="topnav">
     <div class="nav-right">
-      <a class="brand" href="#/onboarding" aria-label="סלים — מסך פתיחה">${logoSvg(34, true)}<span class="brand-name">סלים=Slim</span></a>
+      <a class="brand" href="#/onboarding" aria-label="ליםSlime — מסך פתיחה">${logoSvg(34, true)}<span class="brand-name">ליםSlime</span></a>
       <nav class="nav-links">${links}</nav>
     </div>
     <div class="nav-left">
@@ -700,7 +700,7 @@ function onboardingH() {
        <div class="hero-win-total">${ils0(cheapest.total)}</div></div>` : '';
   return `<div class="ob">
     <div class="ob-main">
-      <div class="ob-brand">${logoSvg(44, false)}<span>סלים=Slim</span></div>
+      <div class="ob-brand">${logoSvg(44, false)}<span>ליםSlime</span></div>
       <div class="ob-badge">נתוני שקיפות מחירים רשמיים · מתעדכן יומית</div>
       <h1 class="ob-title">רשימה אחת.<br>הסל הזול ביותר.</h1>
       <p class="ob-sub">בונים רשימת קניות פעם אחת, וסלים משווה אותה מול חנויות האונליין של הרשתות
@@ -1075,7 +1075,7 @@ function savedH() {
 function setupH() {
   return `<div class="auth">
     <div class="auth-form">
-      <div class="ob-brand">${logoSvg(44, false)}<span>סלים=Slim</span></div>
+      <div class="ob-brand">${logoSvg(44, false)}<span>ליםSlime</span></div>
       <h2 class="page-title">הגדרת פרופיל</h2>
       <p class="page-sub">הפרטים נשמרים בדפדפן שלכם בלבד — אין שרת, אין סיסמה ואין הרשמה.</p>
       <div class="field"><label>שם מלא</label>
