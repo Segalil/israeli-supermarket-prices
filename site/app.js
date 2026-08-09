@@ -601,7 +601,8 @@ function bumpItem(key, d) {
 }
 
 /* ---------- router ---------- */
-const APP_SCREENS = new Set(['build', 'results', 'basket', 'done', 'saved', 'profile']);
+const APP_SCREENS = new Set(['build', 'results', 'basket', 'done', 'saved', 'profile',
+  'terms', 'accessibility']);
 function nav(hash) { location.hash = hash; }
 function route() {
   // split BEFORE decoding — chain labels may contain an encoded slash (%2F)
@@ -652,7 +653,7 @@ function navH() {
   const initial = (state.profile.name || 'א').trim().charAt(0);
   return `<header class="topnav">
     <div class="nav-right">
-      <a class="brand" href="#/onboarding" aria-label="ליםSlime — מסך פתיחה">${logoSvg(34, true)}<span class="brand-name">ליםSlime</span></a>
+      <a class="brand" href="#/onboarding" aria-label="ליםSlim — מסך פתיחה">${logoSvg(34, true)}<span class="brand-name" dir="ltr">ליםSlim</span></a>
       <nav class="nav-links">${links}</nav>
     </div>
     <div class="nav-left">
@@ -664,11 +665,8 @@ function navH() {
 }
 function footH() {
   return `<footer class="foot">
-    <p>המחירים והמבצעים מחושבים מקבצי <a href="https://www.gov.il/he/pages/cpfta_prices_regulations" target="_blank" rel="noopener">שקיפות המחירים הרשמיים</a>
-    של חנויות האונליין ומתעדכנים יומית · דמי המשלוח, המינימום, חלונות האספקה ואזורי החלוקה הם הערכה · המחיר הסופי נקבע באתר הרשת.</p>
-    <p>חיפוש כתובות: <a href="https://photon.komoot.io/" target="_blank" rel="noopener">Photon</a> · © OpenStreetMap ·
-       תמונות מוצרים: <a href="https://world.openfoodfacts.org/" target="_blank" rel="noopener">Open Food Facts</a> (בקירוב) ·
-       <a href="https://github.com/Segalil/israeli-supermarket-prices" target="_blank" rel="noopener">קוד פתוח</a></p>
+    <p>© 2026 כל הזכויות שמורות ל־Segolan Holdings</p>
+    <p><a href="#/terms">תנאי שימוש</a> · <a href="#/accessibility">הצהרת נגישות</a></p>
   </footer>`;
 }
 function noteH() {
@@ -700,7 +698,7 @@ function onboardingH() {
        <div class="hero-win-total">${ils0(cheapest.total)}</div></div>` : '';
   return `<div class="ob">
     <div class="ob-main">
-      <div class="ob-brand">${logoSvg(44, false)}<span>ליםSlime</span></div>
+      <div class="ob-brand">${logoSvg(44, false)}<span dir="ltr">ליםSlim</span></div>
       <div class="ob-badge">נתוני שקיפות מחירים רשמיים · מתעדכן יומית</div>
       <h1 class="ob-title">רשימה אחת.<br>הסל הזול ביותר.</h1>
       <p class="ob-sub">בונים רשימת קניות פעם אחת, וסלים משווה אותה מול חנויות האונליין של הרשתות
@@ -1075,7 +1073,7 @@ function savedH() {
 function setupH() {
   return `<div class="auth">
     <div class="auth-form">
-      <div class="ob-brand">${logoSvg(44, false)}<span>ליםSlime</span></div>
+      <div class="ob-brand">${logoSvg(44, false)}<span dir="ltr">ליםSlim</span></div>
       <h2 class="page-title">הגדרת פרופיל</h2>
       <p class="page-sub">הפרטים נשמרים בדפדפן שלכם בלבד — אין שרת, אין סיסמה ואין הרשמה.</p>
       <div class="field"><label>שם מלא</label>
@@ -1146,6 +1144,150 @@ function profileH() {
   </div>`;
 }
 
+function termsH() {
+  return `<div class="wrap page legal">
+    <h2 class="page-title">תנאי שימוש</h2>
+    <p class="muted sm">עודכן לאחרונה: 9 באוגוסט 2026</p>
+    <div class="card">
+      <h4>1. כללי</h4>
+      <p>אתר "ליםSlim" (להלן: "האתר") מופעל על ידי Segolan Holdings (להלן: "החברה") ומציג
+      השוואת מחירים ומבצעים בין חנויות האונליין של רשתות מזון בישראל, לצד כלים לבניית
+      רשימת קניות. השימוש באתר מהווה הסכמה מלאה לתנאים אלה. אם אינכם מסכימים לתנאים —
+      אנא הימנעו משימוש באתר.</p>
+      <h4>2. אופי המידע באתר</h4>
+      <p>המחירים והמבצעים מחושבים מקבצי מחירונים פומביים שהרשתות מפרסמות מכוח הדין,
+      ומתעדכנים על בסיס יומי. ייתכנו פערים בין הנתונים המוצגים לבין המחיר בפועל.
+      דמי המשלוח, מינימום ההזמנה, חלונות האספקה ואזורי החלוקה המוצגים באתר הם
+      <b>הערכות בלבד</b>. המחיר הסופי, זמינות המוצרים ותנאי האספקה נקבעים אך ורק
+      באתר הרשת שבה מתבצעת ההזמנה.</p>
+      <h4>3. העדר אחריות</h4>
+      <p>האתר והמידע שבו מסופקים כמות שהם (AS-IS) וללא כל אחריות, מפורשת או משתמעת.
+      החברה אינה מתחייבת לדיוק, שלמות, עדכניות או זמינות המידע והשירות, ולא תישא
+      בכל אחריות ו/או חבות, ישירה או עקיפה, לכל נזק, הפסד או הוצאה שייגרמו למשתמש
+      או לצד שלישי בקשר עם השימוש באתר או הסתמכות על המידע שבו — והשימוש הוא באחריות
+      המשתמש בלבד. ההזמנה, התשלום והאספקה מתבצעים ישירות מול הרשת הרלוונטית; החברה
+      אינה צד לעסקה, אינה מוכרת מוצרים ואינה אחראית להם.</p>
+      <h4>4. קניין רוחני</h4>
+      <p>© כל הזכויות באתר, בעיצובו ובסימניו שמורות ל־Segolan Holdings. אין להעתיק,
+      לשכפל, להפיץ או לעשות שימוש מסחרי בתכני האתר ללא אישור מראש ובכתב מהחברה.
+      שמות הרשתות וסימני המסחר המוזכרים באתר שייכים לבעליהם.</p>
+      <h4>5. מקורות מידע</h4>
+      <p>נתוני המחירים והמבצעים: מיזם <a href="https://www.gov.il/he/pages/cpfta_prices_regulations"
+      target="_blank" rel="noopener">שקיפות המחירים</a> של משרד הכלכלה והתעשייה, מתוך
+      הקבצים שמפרסמות הרשתות (שופרסל, רמי לוי, ויקטורי, יינות ביתן / קרפור, יוחננוף,
+      אושר עד). השלמת כתובות: © <a href="https://www.openstreetmap.org/copyright"
+      target="_blank" rel="noopener">OpenStreetMap</a> contributors (שירות Photon).
+      תמונות מוצרים (בקירוב, לפי ברקוד): <a href="https://world.openfoodfacts.org/"
+      target="_blank" rel="noopener">Open Food Facts</a>.</p>
+      <h4>6. פרטיות</h4>
+      <p>רשימות הקניות, ההעדפות והפרופיל נשמרים בדפדפן המשתמש בלבד ואינם נשלחים לשרתי
+      החברה. חיפוש כתובת ותמונות מוצרים כרוכים בפנייה לשירותים חיצוניים (OpenStreetMap /
+      Open Food Facts) בהתאם לתנאי אותם שירותים.</p>
+      <h4>7. שינויים ודין חל</h4>
+      <p>החברה רשאית לעדכן את האתר ואת התנאים בכל עת. על תנאים אלה יחולו דיני מדינת
+      ישראל, וסמכות השיפוט הבלעדית נתונה לבתי המשפט המוסמכים במחוז תל אביב.</p>
+    </div>
+  </div>`;
+}
+
+function accessibilityH() {
+  return `<div class="wrap page legal">
+    <h2 class="page-title">הצהרת נגישות</h2>
+    <p class="muted sm">עודכנה לאחרונה: 9 באוגוסט 2026</p>
+    <div class="card">
+      <h4>מחויבות לנגישות</h4>
+      <p>Segolan Holdings פועלת להנגשת אתר "ליםSlim" לאנשים עם מוגבלות, מתוך תפיסה של
+      שוויון הזדמנויות ובהתאם לחוק שוויון זכויות לאנשים עם מוגבלות, התשנ"ח-1998,
+      ולתקנות שוויון זכויות לאנשים עם מוגבלות (התאמות נגישות לשירות), התשע"ג-2013,
+      בשאיפה לעמידה בתקן הישראלי ת"י 5568 ברמה AA (בהתבסס על הנחיות WCAG 2.1).</p>
+      <h4>התאמות הנגישות באתר</h4>
+      <p>האתר תומך בניווט מלא במקלדת עם סימון מיקוד ברור, כתוב ב־HTML סמנטי עם תוויות
+      ARIA לרכיבים אינטראקטיביים, מותאם לעברית וכיוון RTL, רספונסיבי למובייל, ושומר על
+      ניגודיות צבעים נאותה. בנוסף זמין בכל עמודי האתר <b>תפריט נגישות</b> (הכפתור ♿
+      בפינת המסך) המאפשר: הגדלת טקסט, ניגודיות גבוהה, גווני אפור, הדגשת קישורים,
+      גופן קריא ועצירת אנימציות. ההעדפות נשמרות בדפדפן.</p>
+      <h4>מגבלות ידועות</h4>
+      <p>תמונות המוצרים מגיעות ממקור חיצוני (Open Food Facts) וייתכן שלחלקן חסר תיאור
+      מלא; אתרי הרשתות שאליהם מפנה האתר אינם בשליטתנו ורמת הנגישות בהם באחריות
+      מפעיליהם. אנו ממשיכים לפעול לשיפור הנגישות באופן שוטף.</p>
+      <h4>פנייה בנושא נגישות</h4>
+      <p>נתקלתם בקושי או שיש לכם הצעה לשיפור? נשמח לשמוע ולטפל בהקדם:
+      Segolan Holdings — דוא"ל: <a href="mailto:asegalil1@gmail.com">asegalil1@gmail.com</a>.</p>
+    </div>
+  </div>`;
+}
+
+/* ---------- accessibility widget (persistent, on every screen) ---------- */
+const A11Y_KEY = 'slim-a11y-v1';
+const a11y = loadLS(A11Y_KEY, { font: 0, contrast: false, gray: false,
+  links: false, readable: false, noanim: false });
+function applyA11y() {
+  const c = document.documentElement.classList;
+  c.toggle('a11y-links', a11y.links);
+  c.toggle('a11y-readable', a11y.readable);
+  c.toggle('a11y-noanim', a11y.noanim);
+  document.body.style.zoom = [1, 1.15, 1.3][a11y.font] || 1;
+  const filters = [];
+  if (a11y.contrast) filters.push('invert(1) hue-rotate(180deg)');
+  if (a11y.gray) filters.push('grayscale(1)');
+  document.body.style.filter = filters.join(' ');
+  c.toggle('a11y-contrast', a11y.contrast);
+  saveLS(A11Y_KEY, a11y);
+  const panel = $('.a11y-panel');
+  if (panel) {
+    panel.querySelectorAll('[data-a11y]').forEach(btn => {
+      const k = btn.dataset.a11y;
+      const on = k === 'font' ? a11y.font > 0 : !!a11y[k];
+      btn.classList.toggle('on', on);
+      btn.setAttribute('aria-pressed', String(on));
+      if (k === 'font') btn.querySelector('.a11y-note').textContent =
+        ['רגיל', '+15%', '+30%'][a11y.font];
+    });
+  }
+}
+function mountA11y() {
+  if ($('.a11y-btn')) return;
+  const btn = document.createElement('button');
+  btn.className = 'a11y-btn';
+  btn.setAttribute('aria-label', 'פתיחת תפריט נגישות');
+  btn.textContent = '♿';
+  const panel = document.createElement('div');
+  panel.className = 'a11y-panel';
+  panel.setAttribute('role', 'dialog');
+  panel.setAttribute('aria-label', 'תפריט נגישות');
+  panel.hidden = true;
+  const opts = [
+    ['font', 'הגדלת טקסט'], ['contrast', 'ניגודיות גבוהה'], ['gray', 'גווני אפור'],
+    ['links', 'הדגשת קישורים'], ['readable', 'גופן קריא'], ['noanim', 'עצירת אנימציות'],
+  ];
+  panel.innerHTML = `<div class="a11y-head"><b>נגישות</b>
+      <button class="a11y-close" aria-label="סגירה">×</button></div>` +
+    opts.map(([k, label]) =>
+      `<button class="a11y-opt" data-a11y="${k}" aria-pressed="false">
+         <span>${label}</span><span class="a11y-note"></span></button>`).join('') +
+    `<button class="a11y-opt a11y-reset">איפוס הגדרות</button>
+     <a class="a11y-link" href="#/accessibility">הצהרת נגישות</a>`;
+  btn.addEventListener('click', () => { panel.hidden = !panel.hidden; });
+  panel.querySelector('.a11y-close').addEventListener('click', () => { panel.hidden = true; });
+  panel.querySelector('.a11y-reset').addEventListener('click', () => {
+    Object.assign(a11y, { font: 0, contrast: false, gray: false, links: false, readable: false, noanim: false });
+    applyA11y();
+  });
+  panel.querySelectorAll('[data-a11y]').forEach(el =>
+    el.addEventListener('click', () => {
+      const k = el.dataset.a11y;
+      if (k === 'font') a11y.font = (a11y.font + 1) % 3;
+      else a11y[k] = !a11y[k];
+      applyA11y();
+    }));
+  panel.addEventListener('click', e => {
+    if (e.target.closest('.a11y-link')) panel.hidden = true;
+  });
+  document.body.appendChild(btn);
+  document.body.appendChild(panel);
+  applyA11y();
+}
+
 /* ---------- render & events ---------- */
 function render() {
   if (state.status === 'error') { app.innerHTML = navH() + errorCardH() + footH(); return; }
@@ -1161,6 +1303,8 @@ function render() {
     case 'done': body = doneH(); break;
     case 'saved': body = savedH(); break;
     case 'profile': body = profileH(); break;
+    case 'terms': body = termsH(); break;
+    case 'accessibility': body = accessibilityH(); break;
     default: body = buildH();
   }
   app.innerHTML = (isApp ? navH() : '') + body + (isApp ? footH() : '');
@@ -1376,5 +1520,6 @@ document.addEventListener('click', e => {
 window.addEventListener('hashchange', route);
 document.addEventListener('DOMContentLoaded', () => {
   restoreAll();
+  mountA11y();
   loadData().then(() => route());
 });
