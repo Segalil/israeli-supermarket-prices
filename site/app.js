@@ -1075,7 +1075,8 @@ function setupH() {
     <div class="auth-form">
       <div class="ob-brand">${logoSvg(44, false)}<span dir="ltr">ליםSlim</span></div>
       <h2 class="page-title">הגדרת פרופיל</h2>
-      <p class="page-sub">הפרטים נשמרים בדפדפן שלכם בלבד — אין שרת, אין סיסמה ואין הרשמה.</p>
+      <p class="page-sub">הפרטים — שם, כתובת ורשימות הקניות — נשמרים ומאובטחים בהתאם לחוק
+        ול<a href="#/terms">תנאי השימוש ומדיניות הפרטיות</a>.</p>
       <div class="field"><label>שם מלא</label>
         <input id="fName" class="input" placeholder="דנה כהן" value="${esc(state.profile.name)}"></div>
       <div class="field"><label>דוא״ל (לא חובה)</label>
@@ -1116,7 +1117,7 @@ function profileH() {
       <div>
         <div class="card pro-head">
           ${avatar(p.name || 'א', 'xl')}
-          <div class="pro-id"><h2>${esc(p.name || 'אורח/ת')}</h2><div class="muted">${esc(p.email || 'הפרופיל נשמר בדפדפן בלבד')}</div></div>
+          <div class="pro-id"><h2>${esc(p.name || 'אורח/ת')}</h2><div class="muted">${esc(p.email || 'לא הוזן דוא"ל')}</div></div>
           <button class="btn-outline" data-action="go-setup">עריכת פרופיל</button>
         </div>
         <div class="card">
@@ -1179,9 +1180,17 @@ function termsH() {
       target="_blank" rel="noopener">OpenStreetMap</a> contributors (שירות Photon).
       תמונות מוצרים (בקירוב, לפי ברקוד): <a href="https://world.openfoodfacts.org/"
       target="_blank" rel="noopener">Open Food Facts</a>.</p>
-      <h4>6. פרטיות</h4>
-      <p>רשימות הקניות, ההעדפות והפרופיל נשמרים בדפדפן המשתמש בלבד ואינם נשלחים לשרתי
-      החברה. חיפוש כתובת ותמונות מוצרים כרוכים בפנייה לשירותים חיצוניים (OpenStreetMap /
+      <h4>6. פרטיות ומאגר מידע</h4>
+      <p>במסגרת השימוש באתר נאספים ונשמרים פרטים שהמשתמש מוסר — ובהם שם, פרטי
+      התקשרות, כתובת למשלוח ורשימות הקניות — וכן נתוני שימוש הנדרשים לתפעול השירות.
+      המידע נשמר במאגרי החברה ומאובטח בהתאם לחוק הגנת הפרטיות, התשמ"א-1981,
+      ולתקנות הגנת הפרטיות (אבטחת מידע), התשע"ז-2017. החברה עושה שימוש במידע לצורך
+      הפעלת השירות, חישוב ההשוואות ושיפור השירות בלבד, ולא תעביר אותו לצדדים
+      שלישיים אלא כנדרש על פי דין. חלק מהנתונים נשמר גם באחסון המקומי של דפדפן
+      המשתמש לנוחותו. בהתאם לחוק, כל משתמש רשאי לעיין במידע השמור עליו ולבקש את
+      תיקונו או מחיקתו בפנייה לדוא"ל
+      <a href="mailto:asegalil1@gmail.com">asegalil1@gmail.com</a>.
+      חיפוש כתובת ותמונות מוצרים כרוכים בפנייה לשירותים חיצוניים (OpenStreetMap /
       Open Food Facts) בהתאם לתנאי אותם שירותים.</p>
       <h4>7. שינויים ודין חל</h4>
       <p>החברה רשאית לעדכן את האתר ואת התנאים בכל עת. על תנאים אלה יחולו דיני מדינת
