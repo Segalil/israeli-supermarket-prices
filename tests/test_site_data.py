@@ -179,6 +179,13 @@ def test_category_classification():
         "שניצל עוף טרי": "בשר, עוף ודגים",
         "ביצים L תריסר": "חלב, ביצים וגבינות",
         "מוצר עלום כלשהו": "אחר",
+        # produce only when the name STARTS with the fruit/vegetable —
+        # fruit-flavored products must not land in פירות וירקות
+        "מולר פרופ מנגו 3% 150 גרם": "אחר",
+        "לוקיטוס שטיחים חמוצים תותי": "אחר",
+        "וופל בננה מצופה": "חטיפים ומתוקים",
+        "מארז בננות מובחר": "פירות וירקות",
+        "מלפפון בייבי מארז": "פירות וירקות",
     }
     for name, expected in cases.items():
         assert CATEGORIES[classify_category(name)] == expected, name
