@@ -84,53 +84,76 @@ def chain_dump_folder(chain_key):
     return max(subs, key=os.path.getmtime) if subs else None
 
 
-def find_online_store_id(chain_key):
-    """Download a stores file and try to detect the online store id."""
+def find_online_store(chain_key):
+    """Download a stores file; return (online_store_id | None, stores_found_count)."""
     try:
         scrape(chain_key, "STORE_FILE", limit=1)
         folder = chain_dump_folder(chain_key)
         if not folder:
-            return None
+            return None, 0
+        stores = []
         for f in glob.glob(os.path.join(folder, "*")):
             if "store" in os.path.basename(f).lower():
-                for sid, name in parse_store_file(f):
-                    if looks_online(name):
-                        return sid
+                stores.extend(parse_store_file(f))
+        for sid, name in stores:
+            if looks_online(name):
+                return sid, len(stores)
+        return None, len(stores)
     except Exception as exc:
-        print(f"    (online detection failed: {exc})")
-    return None
+        print(f"    (store file / online detection failed: {exc})")
+        return None, 0
+
+
+def _file_store_matches(path, store_id):
+    """True if a price filename belongs to the given store id (dash/underscore segment)."""
+    sid = store_id.lstrip("0") or "0"
+    for seg in re.split(r"[-_.]", os.path.basename(path)):
+        if seg.isdigit() and (seg.lstrip("0") or "0") == sid:
+            return True
+    return False
 
 
 def collect_chain(chain_key, label, all_stores=False):
     print(f"[{label}] starting…")
-    online_id = None
+    online_id, stores_found = (None, 0)
     if not all_stores:
-        online_id = find_online_store_id(chain_key)
-        print(f"    online store: store_id={online_id or 'not found – using a representative branch'}")
+        online_id, stores_found = find_online_store(chain_key)
+        print(f"    stores found: {stores_found} | online store_id: {online_id or 'not detected'}")
 
-    limit = None if all_stores else (8 if online_id else 1)
-    scrape(chain_key, "PRICE_FULL_FILE", limit=limit)
+    # when we know the online store, pull enough files to likely include it
+    limit = None if all_stores else (30 if online_id else 1)
+    try:
+        scrape(chain_key, "PRICE_FULL_FILE", limit=limit)
+    except Exception as exc:
+        print(f"    PriceFull download error: {exc}")
+
     folder = chain_dump_folder(chain_key)
-    if not folder:
-        print("    no files downloaded.")
+    price_files = []
+    if folder:
+        price_files = [f for f in glob.glob(os.path.join(folder, "*"))
+                       if re.search(r"price", os.path.basename(f), re.I)
+                       and "store" not in os.path.basename(f).lower()]
+    print(f"    price files downloaded: {len(price_files)}")
+    if not price_files:
+        print("    -> no price files (the chain scraper returned nothing).")
         return []
 
-    price_files = [f for f in glob.glob(os.path.join(folder, "*"))
-                   if re.search(r"price", os.path.basename(f), re.I)
-                   and "store" not in os.path.basename(f).lower()]
-    rows, picked = [], 0
-    for f in price_files:
-        r = parse_price_file(f, label)
-        if not r:
-            continue
-        if online_id and not all_stores:
-            if r[0].get("store_id", "").lstrip("0") != online_id.lstrip("0"):
-                continue
-        rows.extend(r)
-        picked += 1
-        if not all_stores and not online_id and picked >= 1:
-            break
-    print(f"    collected {len(rows):,} rows from {picked} file(s).")
+    # prefer the online store's file; otherwise fall back to a representative branch
+    chosen = []
+    if online_id and not all_stores:
+        chosen = [f for f in price_files if _file_store_matches(f, online_id)]
+        if not chosen:
+            print("    online store's file not among downloads – using a representative branch.")
+    if not chosen:
+        chosen = price_files if all_stores else price_files[:1]
+
+    rows = []
+    for f in chosen:
+        try:
+            rows.extend(parse_price_file(f, label))
+        except Exception as exc:
+            print(f"    parse error on {os.path.basename(f)}: {exc}")
+    print(f"    collected {len(rows):,} rows from {len(chosen)} file(s).")
     return rows
 
 
@@ -199,20 +222,29 @@ def main():
 
     stamp = datetime.now().strftime("%Y%m%d")
     all_rows = []
+    per_chain = {}
     for key in args.chains:
         label = LEADING_CHAINS.get(key, key)
         try:
-            all_rows.extend(collect_chain(key, label, all_stores=args.all_stores))
+            rows = collect_chain(key, label, all_stores=args.all_stores)
         except Exception as exc:
             print(f"[{label}] error: {exc}")
+            rows = []
+        per_chain[label] = len(rows)
+        all_rows.extend(rows)
+
+    print("\n=== coverage ===")
+    for label, n in per_chain.items():
+        print(f"  [{'ok  ' if n else 'MISS'}] {label}: {n:,} rows")
+    missing = [l for l, n in per_chain.items() if n == 0]
+    if missing:
+        print(f"  chains with no data: {', '.join(missing)}")
 
     if not all_rows:
         print("No data collected. Check internet access and chain keys.")
         sys.exit(1)
 
     csv_path, xlsx_path, df = write_outputs(all_rows, stamp)
-    print("\n=== summary ===")
-    print(df.groupby("chain")["barcode"].count().to_string())
     print(f"\ntotal rows: {len(df):,}")
     print(f"CSV : {csv_path}")
     print(f"XLSX: {xlsx_path}")
