@@ -35,8 +35,28 @@ jobs:
         run: |
           mkdir -p data
           DATE=$(date +%F)
+          # Never replace a same-day snapshot with a poorer one: runs from
+          # foreign/cloud IPs are geo-blocked by some chains, while local runs
+          # from Israel collect everything — keep whichever has more rows.
+          archive() {
+            src=$1; dst=$2
+            [ -e "$src" ] || return 0
+            new_rows=$(wc -l < "$src")
+            if [ -e "$dst" ]; then
+              old_rows=$(gzip -dc "$dst" | wc -l)
+              if [ "$new_rows" -le "$old_rows" ]; then
+                echo "keeping existing $dst ($old_rows rows >= $new_rows)"
+                return 0
+              fi
+            fi
+            gzip -c "$src" > "$dst"
+            echo "wrote $dst ($new_rows rows)"
+          }
           for f in out/israeli_prices_*.csv; do
-            gzip -c "$f" > "data/israeli_prices_${DATE}.csv.gz"
+            archive "$f" "data/israeli_prices_${DATE}.csv.gz"
+          done
+          for f in out/israeli_promos_*.csv; do
+            archive "$f" "data/israeli_promos_${DATE}.csv.gz"
           done
           ls -la data
 
@@ -47,7 +67,14 @@ jobs:
           git add data
           if git diff --cached --quiet; then
             echo "No changes to commit."
-          else
-            git commit -m "Daily price snapshot: $(date +%F)"
-            git push
+            exit 0
           fi
+          git commit -m "Daily price + promo snapshot: $(date +%F)"
+          # the pages workflow / manual runs can race us — rebase and retry
+          for attempt in 1 2 3; do
+            if git push; then exit 0; fi
+            echo "push failed (attempt $attempt), rebasing…"
+            git pull --rebase origin main || true
+            sleep 5
+          done
+          git push

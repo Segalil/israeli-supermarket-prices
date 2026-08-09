@@ -1,6 +1,7 @@
 # outputs & downloads
 out/
 dumps/
+site/data/
 *.xlsx
 !samples/**
 # python
@@ -16,3 +17,5 @@ env/
 .DS_Store
 .idea/
 .vscode/
+.claude/
+logging.log

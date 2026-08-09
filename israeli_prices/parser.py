@@ -8,9 +8,12 @@ import gzip
 import re
 import xml.etree.ElementTree as ET
 
-# possible source tag names -> normalized column name
+# possible source tag names -> normalized column name (first non-empty wins,
+# so ItemNm > ManufacturerItemDescription when both are present)
 FIELD_MAP = {
-    "itemcode": "barcode", "itemname": "item_name",
+    "itemcode": "barcode", "itemname": "item_name", "itemnm": "item_name",
+    "manufacturenm": "manufacturer",
+    "manufactureritemdescription": "item_name",
     "manufacturername": "manufacturer", "manufacturecountry": "country",
     "unitqty": "unit_qty", "quantity": "quantity",
     "unitofmeasure": "unit_of_measure", "bisweighted": "is_weighted",
@@ -69,11 +72,79 @@ def parse_price_file(path, chain_label=None):
             }
             for sub in el:
                 col = FIELD_MAP.get(_localname(sub.tag))
-                if col:
+                if col and not row.get(col):
                     row[col] = _text(sub)
             if row.get("barcode") or row.get("item_name"):
                 rows.append(row)
     return rows
+
+
+def parse_promo_file(path, chain_label=None):
+    """Parse one Promo/PromoFull file into one row per (promotion, item).
+
+    Handles both layouts seen in the wild:
+    - standard (Cerberus chains): <Promotion> with promo-level DiscountedPrice
+      and a flat <PromotionItems><Item><ItemCode> list;
+    - Shufersal: per-item fields nested under <Groups><Group><PromotionItems>
+      <PromotionItem> (DiscountedPrice per item).
+    """
+    root = root_from_bytes(read_bytes(path))
+    header = {}
+    for child in root:
+        ln = _localname(child.tag)
+        if ln in ("chainid", "storeid", "subchainid"):
+            header[ln] = _text(child)
+
+    rows = []
+    for promo in root.iter():
+        if _localname(promo.tag) != "promotion":
+            continue
+        p = {}
+        for el in promo.iter():
+            ln = _localname(el.tag)
+            if ln in ("promotionid", "promotiondescription", "promotionenddate",
+                      "promotionenddatetime", "clubid", "additionaliscoupon",
+                      "minqty", "discountedprice", "discountrate", "rewardtype",
+                      "minnoofitemofered", "minnoofitemoffered"):
+                if ln not in p or not p[ln]:
+                    p[ln] = _text(el)
+        base = {
+            "chain": chain_label,
+            "chain_id": header.get("chainid", ""),
+            "store_id": header.get("storeid", ""),
+            "promo_id": p.get("promotionid", ""),
+            "description": p.get("promotiondescription", ""),
+            "end_date": (p.get("promotionenddatetime") or
+                         p.get("promotionenddate", ""))[:10],
+            "club": _looks_club_restricted(p.get("clubid", "")),
+            "is_coupon": p.get("additionaliscoupon", "") in ("1", "true", "True"),
+            "reward_type": p.get("rewardtype", ""),
+        }
+        seen = set()
+        for item in promo.iter():
+            if _localname(item.tag) not in ("item", "promotionitem"):
+                continue
+            fields = {_localname(c.tag): _text(c) for c in item}
+            code = fields.get("itemcode", "")
+            if not code or code in seen:
+                continue
+            seen.add(code)
+            rows.append({
+                **base,
+                "barcode": code,
+                "min_qty": fields.get("minqty") or p.get("minqty", ""),
+                "discounted_price": (fields.get("discountedprice")
+                                     or p.get("discountedprice", "")),
+                "discount_rate": (fields.get("discountrate")
+                                  or p.get("discountrate", "")),
+            })
+    return rows
+
+
+def _looks_club_restricted(club_id):
+    """True when a promo is limited to club members ('0' / '0 - כלל הלקוחות' = open)."""
+    c = (club_id or "").strip()
+    return bool(c) and not c.startswith("0")
 
 
 def parse_store_file(path):

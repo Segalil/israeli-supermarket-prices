@@ -1,0 +1,63 @@
+name: Deploy site to GitHub Pages
+
+# Rebuilds the site dataset from the latest snapshot in data/ and deploys the
+# static site. Runs after each daily snapshot, on site changes, or manually.
+# One-time setup: repo Settings -> Pages -> Source: "GitHub Actions".
+on:
+  workflow_run:
+    workflows: ["Daily price snapshot"]
+    types: [completed]
+  push:
+    branches: [main]
+    paths:
+      - "site/**"
+      - "build_site_data.py"
+      - "israeli_prices/**"
+      - ".github/workflows/deploy-pages.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    # after a snapshot run: deploy only if it succeeded
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Checkout (main, includes the latest snapshot)
+        uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      # stdlib only — no pip install needed
+      - name: Build site dataset from latest snapshot
+        run: python build_site_data.py
+
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+        with:
+          enablement: true   # self-enables GitHub Pages on first deploy
+
+      - name: Upload site artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
