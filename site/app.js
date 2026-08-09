@@ -728,6 +728,88 @@ function onboardingH() {
   </div>`;
 }
 
+/* ---------- promotions carousel (main screen) ---------- */
+function bestPromoFor(pr) {
+  let best = null;
+  for (let i = 0; i < state.chains.length; i++) {
+    const base = pr.p[i], promo = pr.pm && pr.pm[i];
+    if (base == null || !promo || promo[0] == null) continue;
+    if (promo[2] & (PROMO_CLUB | PROMO_COUPON)) continue;
+    if (promo[0] >= base - 0.005) continue;
+    const save = (base - promo[0]) / base;
+    if (!best || save > best.save) {
+      best = { save, base, unit: promo[0], desc: promo[1], m: promo[3] || 1,
+               chain: state.chains[i] };
+    }
+  }
+  return best;
+}
+function orderedProductKeys() {
+  const keys = new Set();
+  for (const o of state.orders) {
+    for (const [k] of o.items || []) {
+      const pr = state.byKey.get(k);
+      if (pr) keys.add(pr.k);
+    }
+  }
+  return keys;
+}
+function promoCarouselData() {
+  const all = [];
+  for (const pr of state.products) {
+    const best = bestPromoFor(pr);
+    // sanity band: real promos live at 10%–55% (1+1 = 50%); deeper "deals"
+    // are almost always data glitches in the chains' files
+    if (best && best.base >= 2 && best.save >= 0.10 && best.save <= 0.55) {
+      all.push({ pr, best });
+    }
+  }
+  all.sort((a, b) => b.best.save - a.best.save || avail(b.pr) - avail(a.pr));
+  let personal = [];
+  const ordered = state.profile.name ? orderedProductKeys() : new Set();
+  if (ordered.size) personal = all.filter(x => ordered.has(x.pr.k));
+  const seenKeys = new Set(personal.map(x => x.pr.k));
+  const seenNames = new Set(personal.map(x => x.pr.nLow.split(' ').slice(0, 2).join(' ')));
+  const fill = [];
+  for (const x of all) {
+    if (seenKeys.has(x.pr.k) || !productEan(x.pr)) continue;
+    const nameKey = x.pr.nLow.split(' ').slice(0, 2).join(' ');
+    if (seenNames.has(nameKey)) continue;          // skip near-identical variants
+    seenNames.add(nameKey);
+    fill.push(x);
+  }
+  return { cards: [...personal, ...fill].slice(0, 12), personalCount: personal.length };
+}
+function promoCarouselH() {
+  const { cards, personalCount } = promoCarouselData();
+  if (!cards.length) return '';
+  const title = personalCount
+    ? '🏷 מבצעים בשבילך — על מוצרים שהזמנתם בעבר'
+    : '🏷 המבצעים החמים היום';
+  return `<div class="promo-carousel">
+    <div class="pc-head"><span class="block-kicker">${title}</span>
+      <span class="pc-arrows">
+        <button class="pc-arrow" data-action="pc-scroll" data-dir="1" aria-label="למבצעים הבאים">‹</button>
+        <button class="pc-arrow" data-action="pc-scroll" data-dir="-1" aria-label="למבצעים הקודמים">›</button>
+      </span></div>
+    <div class="pc-track" id="pcTrack" role="region" aria-label="מבצעים">` +
+    cards.map(({ pr, best }, i) => `
+      <div class="pc-card${personalCount && i < personalCount ? ' personal' : ''}">
+        ${productVisual(pr, 'lg')}
+        <span class="pc-name">${esc(pr.n)}</span>
+        <span class="promo-tag" title="${esc(best.desc)}">${esc(best.desc.slice(0, 26))}${best.desc.length > 26 ? '…' : ''}</span>
+        <div class="pc-price-row">
+          <s class="old-price">${money(best.base)}</s>
+          <b class="pc-price">${money(best.unit)}</b>
+          ${best.m > 1 ? `<span class="pc-unit">ליח׳ בקניית ${best.m}</span>` : ''}
+        </div>
+        <div class="pc-foot"><span class="pc-chain">ב${esc(best.chain)}</span>
+          <button class="add-round" data-action="add-deal" data-key="${esc(pr.k)}"
+            data-m="${best.m}" aria-label="הוספה לרשימה">+</button>
+        </div>
+      </div>`).join('') + `</div></div>`;
+}
+
 const CATEGORY_ORDER = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 0];   // display order, "אחר" last
 function popTileH(pr) {
   return `
@@ -802,6 +884,7 @@ function buildH() {
             placeholder="חיפוש מוצר — חלב, ביצים, אורז…">
           <div id="suggestBox" class="suggest" hidden></div>
         </div>
+        ${promoCarouselH()}
         <div class="pop-block">
           ${catChips}
           <div class="block-kicker">${esc(gridTitle)}</div>
@@ -1434,7 +1517,9 @@ function doHandoff(label) {
   copyText(rows.join('\n'));
   if (m.home) window.open(m.home, '_blank', 'noopener');
   state.orders.unshift({ store: label, date: state.date || new Date().toISOString().slice(0, 10),
-    count: lines.length + subsAccepted.length, total });
+    count: lines.length + subsAccepted.length, total,
+    items: [...lines.map(({ pr, qty }) => [pr.k, qty]),
+            ...subsAccepted.map(pr => [pr.k, 1])] });
   state.orders = state.orders.slice(0, 20);
   saveLS(LS.orders, state.orders);
   state.lastHandoff = { label, count: lines.length + subsAccepted.length, total };
@@ -1494,6 +1579,21 @@ document.addEventListener('click', e => {
       render(); break;
     }
     case 'cat-more': state.catLimit += 12; render(); break;
+    case 'pc-scroll': {
+      const track = $('#pcTrack');
+      if (track) track.scrollBy({ left: (+btn.dataset.dir) * -Math.round(track.clientWidth * 0.8),
+        behavior: 'smooth' });
+      break;                                   // no re-render — keep scroll position
+    }
+    case 'add-deal': {
+      const m = parseInt(btn.dataset.m, 10) || 1;
+      const cur = state.list.get(btn.dataset.key) || 0;
+      state.list.set(btn.dataset.key, Math.min(99, cur < m ? m : cur + 1));
+      persistList();
+      toast(m > 1 ? `נוספו ${m} יחידות — כמות המבצע 🏷` : 'נוסף לרשימה 🏷');
+      render();
+      break;
+    }
     case 'mode': state.mode = btn.dataset.mode; render(); break;
     case 'pick': nav('#/basket/' + encodeURIComponent(btn.dataset.chain)); break;
     case 'toggle-sub': {
