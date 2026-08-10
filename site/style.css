@@ -732,6 +732,22 @@ html.a11y-noanim *, html.a11y-noanim *::before, html.a11y-noanim *::after {
   padding: 8px 14px; font-family: inherit; font-size: 13px; color: var(--text); width: 150px;
 }
 .rcp-search:focus-visible { border-color: var(--brand); }
+.rcp-chip.more {
+  border-style: dashed; color: var(--brand-ink); font-weight: 700;
+  background: transparent; justify-content: center;
+}
+.rcp-chip.more:hover { background: var(--brand-tint); }
+
+/* receipt review: swap/attach picker under a row */
+.rcpt-item { border-bottom: 1px solid var(--divider); }
+.rcpt-item:last-of-type { border-bottom: 0; }
+.rcpt-item .item-row { border-bottom: 0; }
+.rcpt-alts { padding: 0 46px 14px; margin-top: 0; }
+.rcpt-swap { flex: none; white-space: nowrap; }
+.rcpt-miss-item { border-bottom: 1px solid var(--divider); }
+.rcpt-miss-item:last-of-type { border-bottom: 0; }
+.rcpt-miss-item .rcpt-miss-row { border-bottom: 0; }
+.rcpt-miss-item .rcpt-alts { padding: 0 6px 12px; }
 
 /* ---------- responsive ---------- */
 @media (max-width: 1020px) {

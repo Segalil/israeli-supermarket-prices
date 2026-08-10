@@ -184,7 +184,6 @@ const state = {
     saveAsList: true, returnTo: '' },
   recipe: { stage: 'idle', url: '', text: '', pasteOpen: false, error: '', statusText: '',
     name: '', ingredients: [], saveAsList: true },
-  pendingSearch: '',          // build-screen search prefill (receipt → manual search)
 };
 
 const $ = sel => document.querySelector(sel);
@@ -1088,11 +1087,31 @@ function matchReceiptText(text) {
       first.qty = Math.min(99, first.qty + ln.qty);
       continue;
     }
-    const item = { raw: ln.raw, price, qty: ln.qty, pr, via, on: !!pr };
+    const item = { raw: ln.raw, price, qty: ln.qty, pr, via, on: !!pr, alt: null };
     if (pr) byK.set(pr.k, item);
     items.push(item);
   }
   return items;
+}
+
+/* browsable alternatives for a receipt line (built lazily on first open):
+   Hebrew words from the raw OCR line, shortened until the catalog answers.
+   NOTE: no hebNorm here — catalog nLow keeps final letters. */
+function receiptAltFor(it) {
+  const words = stripQuotes(String(it.raw).toLowerCase())
+    .replace(/[^א-ת0-9%\s]/g, ' ').split(/\s+/)
+    .filter(w => /[א-ת]/.test(w) && w.length >= 2 && !RECEIPT_TOKEN_STOP.has(w))
+    .slice(0, 5);
+  const { term, matches } = matchesWithShorten(words.join(' '));
+  return { open: true, term: term || '', search: '',
+    cands: matches.map(p => p.k), shown: RCP_CHIPS_FIRST };
+}
+function rcptAltsH(it, idx) {
+  return `<div class="rcp-chips rcpt-alts">
+    <span class="rcp-chip-list">${chipsListH(it.alt.cands, it.alt.shown, it.pr ? it.pr.k : null, 'rcpt-alt', idx)}</span>
+    <span class="rcp-tools"><input class="rcp-search rcpt-alt-search" data-i="${idx}"
+      placeholder="חיפוש מוצר אחר…" value="${esc(it.alt.search)}"></span>
+  </div>`;
 }
 
 /* ---- OCR engine (lazy, cached) ---- */
@@ -1272,13 +1291,15 @@ function receiptH() {
     const onCount = hits.filter(it => it.on).length;
     const rows = hits.map(it => {
       const idx = r.items.indexOf(it);
-      return `<div class="item-row rcpt-row${it.on ? '' : ' off'}">
+      return `<div class="rcpt-item">
+        <div class="item-row rcpt-row${it.on ? '' : ' off'}">
         <button class="sel-round${it.on ? ' on' : ''}" data-action="rcpt-toggle" data-idx="${idx}"
           aria-label="${it.on ? 'הסרה מהרשימה' : 'הוספה לרשימה'}">${it.on ? '✓' : '+'}</button>
         ${productVisual(it.pr)}
         <div class="item-main">
           <span class="item-name">${esc(it.pr.n)}
-            ${it.via === 'code' ? '<span class="tag rcpt-code-tag" title="הותאם לפי המק&quot;ט שמודפס בקבלה">🎯 לפי מק״ט</span>' : ''}</span>
+            ${it.via === 'code' ? '<span class="tag rcpt-code-tag" title="הותאם לפי המק&quot;ט שמודפס בקבלה">🎯 לפי מק״ט</span>' : ''}
+            ${it.via === 'manual' ? '<span class="tag rcpt-code-tag">👤 נבחר ידנית</span>' : ''}</span>
           <span class="item-meta rcpt-raw" dir="rtl">בקבלה: „${esc(it.raw.slice(0, 60))}“${it.price != null ? ` · ${money(it.price)}` : ''}</span>
         </div>
         <div class="stepper">
@@ -1287,17 +1308,27 @@ function receiptH() {
           <button data-action="rcpt-inc" data-idx="${idx}" aria-label="הוספה">+</button>
         </div>
         <div class="item-from">${esc(fromLabel(it.pr))}</div>
+        <button class="btn-ghost sm rcpt-swap" data-action="rcpt-alt-toggle" data-idx="${idx}"
+          title="לא המוצר הנכון? בחרו אחר מהקטלוג">${it.alt && it.alt.open ? 'סגירה' : '🔄 החלפה'}</button>
+        </div>
+        ${it.alt && it.alt.open ? rcptAltsH(it, idx) : ''}
       </div>`;
     }).join('');
     const missH = misses.length ? `
       <div class="side-card tinted rcpt-miss">
         <h4>שורות שלא זוהו (${misses.length})</h4>
-        <p class="muted sm">אפשר לחפש אותן ידנית בקטלוג — לוחצים ועוברים לחיפוש עם הטקסט מהקבלה.</p>
-        ${misses.map(it => `<div class="rcpt-miss-row">
-          <span class="rcpt-raw" dir="rtl">„${esc(it.raw.slice(0, 60))}“</span>
-          <button class="btn-outline sm" data-action="rcpt-manual"
-            data-q="${esc(it.raw.replace(/[^א-ת\s%0-9]/g, ' ').replace(/\s+/g, ' ').trim().split(' ').slice(0, 3).join(' '))}">חיפוש ידני</button>
-        </div>`).join('')}
+        <p class="muted sm">בכל זאת מוצר? פתחו את החיפוש, דפדפו בהתאמות מהקטלוג וצרפו אותו לרשימה.</p>
+        ${misses.map(it => {
+          const idx = r.items.indexOf(it);
+          return `<div class="rcpt-miss-item">
+          <div class="rcpt-miss-row">
+            <span class="rcpt-raw" dir="rtl">„${esc(it.raw.slice(0, 60))}“</span>
+            <button class="btn-outline sm" data-action="rcpt-alt-toggle" data-idx="${idx}">
+              ${it.alt && it.alt.open ? 'סגירה' : '🔍 בחירת מוצר'}</button>
+          </div>
+          ${it.alt && it.alt.open ? rcptAltsH(it, idx) : ''}
+        </div>`;
+        }).join('')}
       </div>` : '';
     main = hits.length ? `
       <div class="card rcpt-review">
@@ -1477,8 +1508,10 @@ function recipeFromPastedText(text) {
   return out.length ? { name: '', ingredients: out } : null;
 }
 
-/* candidate products for one ingredient term — the chips the user picks from */
-function recipeCandidates(term, limit = 4) {
+/* ALL matching products for one term (browsable, capped for DOM sanity) —
+   the user pages through them with "עוד התאמות" */
+const RCP_MATCH_CAP = 150, RCP_CHIPS_FIRST = 4, RCP_CHIPS_STEP = 8;
+function recipeMatches(term) {
   const q = stripQuotes(String(term).toLowerCase()).trim();
   if (q.length < 2) return [];
   const words = q.split(/\s+/);
@@ -1494,7 +1527,20 @@ function recipeCandidates(term, limit = 4) {
   }
   scored.sort((a, b) => a[0] - b[0] || avail(b[1]) - avail(a[1]) ||
     minActivePrice(a[1], true) - minActivePrice(b[1], true));
-  return scored.slice(0, limit).map(x => x[1]);
+  return scored.slice(0, RCP_MATCH_CAP).map(x => x[1]);
+}
+function recipeCandidates(term, limit = RCP_CHIPS_FIRST) {
+  return recipeMatches(term).slice(0, limit);
+}
+
+/* shorten a term word-by-word until the catalog answers */
+function matchesWithShorten(term) {
+  let t = term, matches = t ? recipeMatches(t) : [];
+  while (!matches.length && t.includes(' ')) {
+    t = t.split(' ').slice(0, -1).join(' ');
+    matches = recipeMatches(t);
+  }
+  return { term: matches.length ? t : term, matches };
 }
 
 function buildRecipeRows(lines) {
@@ -1502,17 +1548,11 @@ function buildRecipeRows(lines) {
   for (const raw0 of lines.slice(0, 30)) {
     const raw = String(raw0).replace(/\s+/g, ' ').trim();
     if (raw.length < 2) continue;
-    let term = ingredientTerm(raw);
-    if (!term) continue;
-    let cands = recipeCandidates(term);
-    let t = term;
-    while (!cands.length && t.includes(' ')) {      // shorten until the catalog answers
-      t = t.split(' ').slice(0, -1).join(' ');
-      cands = recipeCandidates(t);
-    }
-    if (cands.length) term = t;
-    rows.push({ raw, term, search: '', cands: cands.map(p => p.k),
-      chosen: null, have: false, qty: 1 });
+    const term0 = ingredientTerm(raw);
+    if (!term0) continue;
+    const { term, matches } = matchesWithShorten(term0);
+    rows.push({ raw, term, search: '', cands: matches.map(p => p.k),
+      shown: RCP_CHIPS_FIRST, chosen: null, have: false, qty: 1 });
   }
   return rows;
 }
@@ -1610,21 +1650,29 @@ function commitRecipe() {
   nav('#/build');
 }
 
-function rcpChipsListH(row, i) {
-  const keys = row.chosen && !row.cands.includes(row.chosen)
-    ? [row.chosen, ...row.cands] : row.cands;
-  const chips = keys.map(k => {
+/* generic browsable chip list: first `shown` of ALL matches + an "עוד" pager.
+   `prefix` names the click actions: `${prefix}-pick` / `${prefix}-more`. */
+function chipsListH(keys, shown, chosenKey, prefix, i) {
+  let visible = keys.slice(0, shown);
+  if (chosenKey && !visible.includes(chosenKey)) visible = [chosenKey, ...visible];
+  const chips = visible.map(k => {
     const pr = state.byKey.get(k);
     if (!pr) return '';
-    const on = row.chosen === k;
-    return `<button class="rcp-chip${on ? ' on' : ''}" data-action="rcp-pick" data-i="${i}" data-key="${esc(k)}"
+    const on = chosenKey === k;
+    return `<button class="rcp-chip${on ? ' on' : ''}" data-action="${prefix}-pick" data-i="${i}" data-key="${esc(k)}"
       title="${esc(pr.n)}">
       ${productVisual(pr)}
       <span class="rcp-chip-main"><span class="rcp-chip-name">${esc(pr.n)}</span>
       <span class="rcp-chip-price">${esc(fromLabel(pr))}</span></span>
       ${on ? '<span class="rcp-chip-check">✓</span>' : ''}</button>`;
   }).join('');
-  return chips || '<span class="muted sm rcp-none">לא נמצאו מוצרים מתאימים — נסו לחפש:</span>';
+  const rest = keys.length - Math.min(shown, keys.length);
+  const more = rest > 0
+    ? `<button class="rcp-chip more" data-action="${prefix}-more" data-i="${i}">עוד התאמות (${rest})</button>` : '';
+  return (chips || '<span class="muted sm rcp-none">לא נמצאו מוצרים מתאימים — נסו לחפש:</span>') + more;
+}
+function rcpChipsListH(row, i) {
+  return chipsListH(row.cands, row.shown, row.chosen, 'rcp', i);
 }
 
 function recipeH() {
@@ -2736,12 +2784,6 @@ function bindScreen() {
       timer = setTimeout(() => renderSuggest(si.value), 120);
     });
     si.addEventListener('keydown', e => { if (e.key === 'Escape') hideSuggest(); });
-    if (state.pendingSearch) {                 // receipt "חיפוש ידני" hand-off
-      si.value = state.pendingSearch;
-      state.pendingSearch = '';
-      si.focus();
-      renderSuggest(si.value);
-    }
   }
   const sv = $('#rcptSaveList');
   if (sv) sv.addEventListener('change', () => { state.receipt.saveAsList = sv.checked; });
@@ -2754,22 +2796,33 @@ function bindScreen() {
   }
   const rcpText = $('#rcpText');
   if (rcpText) rcpText.addEventListener('input', () => { state.recipe.text = rcpText.value; });
-  // per-ingredient product search: replaces only that row's chips, keeps focus
-  document.querySelectorAll('.rcp-search').forEach(inp => {
+  // per-row product search (recipe rows + receipt rows): replaces only that
+  // row's chips in place, so the input keeps focus while typing
+  const bindChipSearch = (inp, getRow, listHFor) => {
     let timer = 0;
     inp.addEventListener('input', () => {
       clearTimeout(timer);
       timer = setTimeout(() => {
-        const row = state.recipe.ingredients[+inp.dataset.i];
+        const row = getRow();
         if (!row) return;
         row.search = inp.value;
-        const q = inp.value.trim() || row.term;
-        row.cands = recipeCandidates(q).map(p => p.k);
+        row.cands = recipeMatches(inp.value.trim() || row.term).map(p => p.k);
+        row.shown = RCP_CHIPS_FIRST;
         const list = inp.closest('.rcp-chips')?.querySelector('.rcp-chip-list');
-        if (list) { list.innerHTML = rcpChipsListH(row, +inp.dataset.i); scanImages(); }
+        if (list) { list.innerHTML = listHFor(row); scanImages(); }
       }, 250);
     });
-  });
+  };
+  document.querySelectorAll('.rcp-search:not(.rcpt-alt-search)').forEach(inp => bindChipSearch(inp,
+    () => state.recipe.ingredients[+inp.dataset.i],
+    row => rcpChipsListH(row, +inp.dataset.i)));
+  document.querySelectorAll('.rcpt-alt-search').forEach(inp => bindChipSearch(inp,
+    () => {
+      const it = state.receipt.items[+inp.dataset.i];
+      return it && it.alt;
+    },
+    alt => chipsListH(alt.cands, alt.shown,
+      state.receipt.items[+inp.dataset.i].pr?.k || null, 'rcpt-alt', +inp.dataset.i)));
   const rf = $('#rcptFile');
   if (rf) {
     rf.addEventListener('change', () => startReceiptScan(rf.files && rf.files[0]));
@@ -2942,11 +2995,30 @@ document.addEventListener('click', e => {
     }
     case 'rcpt-commit': commitReceipt(); break;
     case 'rcpt-reset': resetReceipt(); render(); break;
-    case 'rcpt-manual':
-      state.pendingSearch = btn.dataset.q || '';
-      resetReceipt();
-      nav('#/build');
+    case 'rcpt-alt-toggle': {
+      const it = state.receipt.items[+btn.dataset.idx];
+      if (it) {
+        if (!it.alt) it.alt = receiptAltFor(it);
+        else it.alt.open = !it.alt.open;
+        render();
+      }
       break;
+    }
+    case 'rcpt-alt-pick': {
+      const it = state.receipt.items[+btn.dataset.i];
+      const pr = state.byKey.get(btn.dataset.key);
+      if (it && pr) {
+        it.pr = pr; it.via = 'manual'; it.on = true;
+        if (it.alt) it.alt.open = false;
+        render();
+      }
+      break;
+    }
+    case 'rcpt-alt-more': {
+      const it = state.receipt.items[+btn.dataset.i];
+      if (it && it.alt) { it.alt.shown += RCP_CHIPS_STEP; render(); }
+      break;
+    }
     case 'go-recipe': state.visited = true; persistPrefs(); nav('#/recipe'); break;
     case 'rcp-fetch': startRecipeFetch(($('#rcpUrl') || {}).value); break;
     case 'rcp-paste-toggle':
@@ -2959,6 +3031,11 @@ document.addEventListener('click', e => {
         row.chosen = row.chosen === btn.dataset.key ? null : btn.dataset.key;
         render();
       }
+      break;
+    }
+    case 'rcp-more': {
+      const row = state.recipe.ingredients[+btn.dataset.i];
+      if (row) { row.shown += RCP_CHIPS_STEP; render(); }
       break;
     }
     case 'rcp-have': {

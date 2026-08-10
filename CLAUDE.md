@@ -109,7 +109,13 @@ Downloading is done via the il-supermarket-scraper library (PyPI).
     recipe URL (or the ingredient text) → ingredient rows → the USER picks the
     exact product per ingredient (human-in-the-middle by design — nothing is
     auto-selected; "יש לי בבית" skips a row; per-row search replaces only that
-    row's chips so focus survives). Extraction order: schema.org Recipe
+    row's chips so focus survives; chips page through ALL matches via
+    chipsListH — RCP_MATCH_CAP/RCP_CHIPS_FIRST/RCP_CHIPS_STEP — with an
+    "עוד התאמות (N)" pager). The SAME picker serves the receipt review:
+    "🔄 החלפה" on matched rows swaps the product (via='manual', 👤 tag) and
+    unmatched lines get an inline "🔍 בחירת מוצר" picker (item.alt built
+    lazily by receiptAltFor — un-normalized words, since catalog nLow keeps
+    final letters); picking on a miss row moves it into the matched list. Extraction order: schema.org Recipe
     JSON-LD (regex-scanned → node-testable), DOM ingredient selectors,
     "מצרכים" text-section scan; pasted text stops at an instructions header.
     URL fetch: direct, then free public CORS relays (RECIPE_PROXIES — the
