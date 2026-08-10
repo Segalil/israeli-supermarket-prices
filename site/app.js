@@ -182,6 +182,8 @@ const state = {
   seeded: false,
   receipt: { stage: 'idle', progress: 0, statusText: '', imgUrl: '', items: [], error: '',
     saveAsList: true, returnTo: '' },
+  recipe: { stage: 'idle', url: '', text: '', pasteOpen: false, error: '', statusText: '',
+    name: '', ingredients: [], saveAsList: true },
   pendingSearch: '',          // build-screen search prefill (receipt → manual search)
 };
 
@@ -1335,9 +1337,394 @@ function receiptH() {
   </div>`;
 }
 
+/* ---------- recipe link → ingredient picker (human in the middle) ----------
+   Paste a recipe URL (or the ingredient text itself) and every ingredient
+   becomes a row of candidate products from the catalog — the USER picks the
+   exact product (which flour, which brand); nothing is auto-selected. Free by
+   design: extraction happens in the browser. URL fetching tries the page
+   directly, then free public CORS relays; when all fail the paste-the-text
+   path always works. Israeli recipe sites embed schema.org Recipe JSON-LD
+   with recipeIngredient — that is the primary extraction path (regex-scanned
+   so it is also testable in node); DOM selectors and a "מצרכים" text-section
+   scan are fallbacks. */
+const RECIPE_PROXIES = [
+  u => `https://api.allorigins.win/raw?url=${encodeURIComponent(u)}`,
+  u => `https://corsproxy.io/?url=${encodeURIComponent(u)}`,
+  u => `https://r.jina.ai/${u}`,
+];
+
+/* quantity / unit / glue words dropped from the START of an ingredient line */
+const RCP_NUM_RE = /^(?:\d+(?:[.,]\d+)?|\d+\/\d+|[½⅓¼¾⅔⅛]|ו?חצי|ו?רבע|ו?שליש|שני|שתי|שלוש|שלושה|ארבע|ארבעה|חמש|חמישה|שש|שישה|שבע|שבעה|שמונה|תשע|תשעה|עשר|עשרה|כמה|מעט|קצת)$/;
+const RCP_UNITS = new Set(['כוס', 'כוסות', 'כף', 'כפות', 'כפית', 'כפיות', 'גרם',
+  'גר', 'ג', 'קילו', 'קג', 'מל', 'ליטר', 'ליטרים', 'יחידה', 'יחידות', 'יח',
+  'חבילה', 'חבילות', 'חב', 'קופסה', 'קופסת', 'קופסאות', 'שקית', 'שקיות',
+  'פחית', 'פחיות', 'צנצנת', 'גביע', 'גביעים', 'מיכל', 'בקבוק', 'פרוסה',
+  'פרוסות', 'שן', 'שיני', 'שיניים', 'ענף', 'ענפי', 'גבעול', 'גבעולי', 'חופן',
+  'קורט', 'קוביה', 'קוביות', 'מקל', 'מקלות', 'צרור', 'חבילת', 'של']);
+/* descriptor words dropped ANYWHERE (prep style, size, serving notes) */
+const RCP_DESCR = new Set(['קצוץ', 'קצוצה', 'קצוצים', 'קצוצות', 'כתוש', 'כתושה',
+  'כתושים', 'כתושות', 'טחון', 'טחונה',
+  'חתוך', 'חתוכה', 'חתוכים', 'חתוכות', 'פרוס', 'פרוסים', 'מגורר', 'מגוררת',
+  'מגורד', 'מגורדת', 'קלוף', 'קלופה', 'קלופים', 'טרי', 'טריה', 'טרייה',
+  'טריים', 'גדול', 'גדולה', 'גדולים', 'קטן', 'קטנה', 'קטנים', 'בינוני',
+  'בינונית', 'רך', 'רכה', 'מומס', 'מומסת', 'קר', 'קרה', 'קרים', 'חם', 'חמה',
+  'פושר', 'פושרת', 'רותח', 'רותחת', 'מבושל', 'מבושלת', 'אופציונלי',
+  'אופציונאלי', 'לקישוט', 'להגשה', 'לטיגון', 'למריחה', 'לתיבול', 'לציפוי',
+  'מעל', 'בערך', 'בקירוב', 'לפי', 'הטעם', 'הצורך', 'כרצונכם', 'שטוחה',
+  'גדושה', 'מלאה', 'שלם', 'שלמה', 'שלמים', 'ללא', 'בלי', 'או']);
+
+/* "2 כוסות קמח לבן מנופה" → "קמח לבן" — the shopping term behind a recipe line */
+function ingredientTerm(line) {
+  let s = String(line).replace(/\(.*?\)/g, ' ');            // parenthetical notes
+  s = s.split(' - ')[0];                                    // trailing " - הערה"
+  s = stripQuotes(s.toLowerCase()).replace(/[^א-תa-z0-9%½⅓¼¾⅔⅛/.,\s]/g, ' ');
+  const tokens = s.split(/\s+/).filter(Boolean);
+  let i = 0;
+  while (i < tokens.length && (RCP_NUM_RE.test(tokens[i]) || RCP_UNITS.has(tokens[i]))) i++;
+  const words = [];
+  for (; i < tokens.length && words.length < 4; i++) {
+    const t = tokens[i];
+    if (RCP_DESCR.has(t) || RCP_NUM_RE.test(t)) continue;
+    if (!/[א-ת]/.test(t) && !/^\d{1,2}%$/.test(t)) continue;  // latin/L-size noise
+    words.push(t);
+  }
+  return words.join(' ');
+}
+
+/* schema.org Recipe JSON-LD, regex-scanned so it works on raw HTML in node too */
+function recipeFromJsonLd(html) {
+  const re = /<script[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi;
+  let m;
+  while ((m = re.exec(html))) {
+    try {
+      const nodes = [];
+      const walk = d => {
+        if (!d) return;
+        if (Array.isArray(d)) { d.forEach(walk); return; }
+        if (typeof d === 'object') {
+          nodes.push(d);
+          if (d['@graph']) walk(d['@graph']);
+        }
+      };
+      walk(JSON.parse(m[1]));
+      for (const n of nodes) {
+        const t = n['@type'];
+        if ((t === 'Recipe' || (Array.isArray(t) && t.includes('Recipe'))) &&
+            Array.isArray(n.recipeIngredient) && n.recipeIngredient.length) {
+          return { name: String(n.name || ''), ingredients: n.recipeIngredient.map(String) };
+        }
+      }
+    } catch (_) {}
+  }
+  return null;
+}
+
+/* microdata / ingredient-class DOM fallback (browser only) */
+function recipeFromDom(html) {
+  if (typeof DOMParser === 'undefined') return null;
+  try {
+    const doc = new DOMParser().parseFromString(html, 'text/html');
+    for (const sel of ['[itemprop="recipeIngredient"]', '[itemprop="ingredients"]',
+      '[class*="ingredient" i] li', 'ul[class*="ingredient" i] li']) {
+      const lines = [...doc.querySelectorAll(sel)]
+        .map(e => e.textContent.replace(/\s+/g, ' ').trim())
+        .filter(t => t.length > 1 && t.length < 120);
+      if (lines.length >= 2) {
+        const h1 = doc.querySelector('h1');
+        return { name: h1 ? h1.textContent.trim() : '', ingredients: [...new Set(lines)] };
+      }
+    }
+  } catch (_) {}
+  return null;
+}
+
+/* "מצרכים" section scan over plain text (markdown proxies, stripped HTML) */
+function recipeFromLooseText(input) {
+  const text = String(input)
+    .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<[^>]+>/g, '\n');
+  const lines = text.split('\n').map(l => l.replace(/\s+/g, ' ').trim());
+  const start = lines.findIndex(l =>
+    /^[#*\s]*(מצרכים|רכיבים|החומרים|חומרים)(?=$|[\s:])/.test(l) && l.length < 30);
+  if (start < 0) return null;
+  const out = [];
+  let blanks = 0;
+  for (let i = start + 1; i < lines.length && out.length < 40; i++) {
+    const l = lines[i].replace(/^[-*•·◦]\s*/, '').trim();
+    if (!l) { if (out.length && ++blanks > 2) break; continue; }
+    blanks = 0;
+    if (/^[#*\s]*(אופן|הוראות|הכנה|שלבי|להכנה)/.test(l)) break;
+    if (l.length > 90 || l.endsWith(':')) continue;
+    out.push(l);
+  }
+  return out.length >= 2 ? { name: '', ingredients: out } : null;
+}
+
+/* pasted-ingredients mode: every non-header line is an ingredient; an
+   instructions header ends the list (people paste the whole recipe) */
+function recipeFromPastedText(text) {
+  const out = [];
+  for (const raw of String(text).split('\n')) {
+    const l = raw.replace(/^[-*•·◦]\s*/, '').replace(/\s+/g, ' ').trim();
+    if (!l) continue;
+    if (/^[#*\s]*(אופן|הוראות|הכנה|שלבי|להכנה)(?=$|[\s:])/.test(l)) break;
+    if (l.length > 90 || l.endsWith(':')) continue;
+    if (/^[#*\s]*(מצרכים|רכיבים|החומרים|חומרים)(?=$|[\s:])/.test(l)) continue;
+    out.push(l);
+    if (out.length >= 40) break;
+  }
+  return out.length ? { name: '', ingredients: out } : null;
+}
+
+/* candidate products for one ingredient term — the chips the user picks from */
+function recipeCandidates(term, limit = 4) {
+  const q = stripQuotes(String(term).toLowerCase()).trim();
+  if (q.length < 2) return [];
+  const words = q.split(/\s+/);
+  const scored = [];
+  for (const pr of state.products) {
+    let score;
+    if (pr.nLow.startsWith(q)) score = 0;
+    else if (pr.nLow.includes(' ' + q)) score = 1;
+    else if (pr.nLow.includes(q)) score = 2;
+    else if (words.length > 1 && words.every(w => keywordScore(pr, w) >= 0)) score = 3;
+    else continue;
+    scored.push([score, pr]);
+  }
+  scored.sort((a, b) => a[0] - b[0] || avail(b[1]) - avail(a[1]) ||
+    minActivePrice(a[1], true) - minActivePrice(b[1], true));
+  return scored.slice(0, limit).map(x => x[1]);
+}
+
+function buildRecipeRows(lines) {
+  const rows = [];
+  for (const raw0 of lines.slice(0, 30)) {
+    const raw = String(raw0).replace(/\s+/g, ' ').trim();
+    if (raw.length < 2) continue;
+    let term = ingredientTerm(raw);
+    if (!term) continue;
+    let cands = recipeCandidates(term);
+    let t = term;
+    while (!cands.length && t.includes(' ')) {      // shorten until the catalog answers
+      t = t.split(' ').slice(0, -1).join(' ');
+      cands = recipeCandidates(t);
+    }
+    if (cands.length) term = t;
+    rows.push({ raw, term, search: '', cands: cands.map(p => p.k),
+      chosen: null, have: false, qty: 1 });
+  }
+  return rows;
+}
+
+async function fetchRecipeUrl(url) {
+  for (const attempt of [url, ...RECIPE_PROXIES.map(p => p(url))]) {
+    try {
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), 9000);
+      const res = await fetch(attempt, { signal: ctrl.signal });
+      clearTimeout(timer);
+      if (!res.ok) continue;
+      const text = await res.text();
+      if (text && text.length > 200) return text;
+    } catch (_) {}
+  }
+  throw new Error('recipe fetch failed');
+}
+
+async function startRecipeFetch(url) {
+  const r = state.recipe;
+  url = (url || '').trim();
+  if (!/^https?:\/\//i.test(url)) {
+    r.error = 'הדביקו קישור מלא למתכון (מתחיל ב־http)';
+    render(); return;
+  }
+  if (state.status !== 'live' || r.stage === 'working') return;
+  r.url = url; r.stage = 'working'; r.error = '';
+  r.statusText = 'מושכים את דף המתכון…';
+  render();
+  try {
+    const html = await fetchRecipeUrl(url);
+    r.statusText = 'מחלצים את רשימת המצרכים…';
+    const rec = recipeFromJsonLd(html) || recipeFromDom(html) || recipeFromLooseText(html);
+    finishRecipeParse(rec);
+  } catch (err) {
+    console.warn('recipe fetch failed:', err);
+    r.stage = 'idle';
+    r.error = 'לא הצלחנו למשוך את המתכון מהקישור — נסו שוב, או הדביקו את רשימת המצרכים כטקסט (הכפתור למטה).';
+    r.pasteOpen = true;
+    render();
+  }
+}
+
+function startRecipeText(text) {
+  const r = state.recipe;
+  if (!String(text || '').trim()) { r.error = 'הדביקו קודם את רשימת המצרכים'; render(); return; }
+  r.error = '';
+  finishRecipeParse(recipeFromPastedText(text));
+}
+
+function finishRecipeParse(rec) {
+  const r = state.recipe;
+  const rows = rec && rec.ingredients.length ? buildRecipeRows(rec.ingredients) : [];
+  if (!rows.length) {
+    r.stage = 'idle';
+    r.error = 'לא מצאנו רשימת מצרכים — נסו קישור אחר, או הדביקו את המצרכים כטקסט.';
+    r.pasteOpen = true;
+    render(); return;
+  }
+  r.name = (rec.name || '').trim();
+  r.ingredients = rows;
+  r.stage = 'pick';
+  render();
+}
+
+function resetRecipe() {
+  Object.assign(state.recipe, { stage: 'idle', url: '', error: '', statusText: '',
+    name: '', ingredients: [] });
+}
+
+function commitRecipe() {
+  const r = state.recipe;
+  const picked = r.ingredients
+    .filter(x => !x.have && x.chosen && state.byKey.has(x.chosen))
+    .map(x => ({ pr: state.byKey.get(x.chosen), qty: x.qty }));
+  if (!picked.length) { toast('בחרו לפחות מוצר אחד מהמצרכים'); return; }
+  for (const { pr, qty } of picked) {
+    state.list.set(pr.k, Math.min(99, (state.list.get(pr.k) || 0) + qty));
+  }
+  persistList();
+  let savedMsg = '';
+  if (r.saveAsList) {
+    state.saved.unshift({ id: 'own-' + Date.now(), kicker: 'ממתכון 🔗',
+      name: r.name ? 'מתכון: ' + r.name.slice(0, 40) : 'רשימת מתכון',
+      codes: picked.map(({ pr, qty }) => [pr.k, qty]), created: state.date });
+    saveLS(LS.saved, state.saved);
+    savedMsg = ', ונשמרה גם ברשימות השמורות';
+  }
+  const have = r.ingredients.filter(x => x.have).length;
+  state.note = `נוספו ${picked.length} מוצרים מהמתכון 🔗${savedMsg}.` +
+    (have ? ` ${have} מצרכים סומנו כ"יש בבית".` : '');
+  state.visited = true; persistPrefs();
+  resetRecipe();
+  nav('#/build');
+}
+
+function rcpChipsListH(row, i) {
+  const keys = row.chosen && !row.cands.includes(row.chosen)
+    ? [row.chosen, ...row.cands] : row.cands;
+  const chips = keys.map(k => {
+    const pr = state.byKey.get(k);
+    if (!pr) return '';
+    const on = row.chosen === k;
+    return `<button class="rcp-chip${on ? ' on' : ''}" data-action="rcp-pick" data-i="${i}" data-key="${esc(k)}"
+      title="${esc(pr.n)}">
+      ${productVisual(pr)}
+      <span class="rcp-chip-main"><span class="rcp-chip-name">${esc(pr.n)}</span>
+      <span class="rcp-chip-price">${esc(fromLabel(pr))}</span></span>
+      ${on ? '<span class="rcp-chip-check">✓</span>' : ''}</button>`;
+  }).join('');
+  return chips || '<span class="muted sm rcp-none">לא נמצאו מוצרים מתאימים — נסו לחפש:</span>';
+}
+
+function recipeH() {
+  const r = state.recipe;
+  let main;
+  if (r.stage === 'working') {
+    main = `<div class="card rcp-working">
+      <div class="rcpt-bar rcp-indet"><div class="rcpt-bar-fill"></div></div>
+      <div class="muted">${esc(r.statusText)}</div>
+    </div>`;
+  } else if (r.stage === 'pick') {
+    const chosen = r.ingredients.filter(x => !x.have && x.chosen).length;
+    const have = r.ingredients.filter(x => x.have).length;
+    const rows = r.ingredients.map((row, i) => `
+      <div class="rcp-row${row.have ? ' off' : ''}">
+        <div class="rcp-row-head">
+          <span class="rcpt-raw" dir="rtl">„${esc(row.raw.slice(0, 70))}“</span>
+          <button class="btn-ghost sm" data-action="rcp-have" data-i="${i}">
+            ${row.have ? '↩ בכל זאת צריך' : '✓ יש לי בבית'}</button>
+        </div>
+        ${row.have ? '' : `<div class="rcp-chips">
+          <span class="rcp-chip-list">${rcpChipsListH(row, i)}</span>
+          <span class="rcp-tools">
+            <input class="rcp-search" data-i="${i}" placeholder="חיפוש מוצר אחר…" value="${esc(row.search)}">
+            ${row.chosen ? `<span class="stepper">
+              <button data-action="rcp-dec" data-i="${i}" aria-label="הפחתה">−</button>
+              <span>${row.qty}</span>
+              <button data-action="rcp-inc" data-i="${i}" aria-label="הוספה">+</button></span>` : ''}
+          </span>
+        </div>`}
+      </div>`).join('');
+    main = `
+      <div class="card rcpt-review">
+        <div class="list-head"><h3>${esc(r.name || 'המתכון')}</h3>
+          <span class="muted">נבחרו ${chosen} מתוך ${r.ingredients.length} מצרכים${have ? ` · ${have} יש בבית` : ''}</span></div>
+        <p class="muted sm">לכל מצרך מוצגות התאמות מהקטלוג — בחרו את המוצר המדויק שאתם קונים
+          (איזה קמח, איזה מותג). אפשר לחפש אחרת בכל שורה.</p>
+        ${rows}
+      </div>
+      <label class="rcpt-save-opt">
+        <input type="checkbox" id="rcpSaveList"${r.saveAsList ? ' checked' : ''}>
+        <span>לשמור גם כרשימה שמורה${r.name ? ` — „מתכון: ${esc(r.name.slice(0, 40))}“` : ''}</span>
+      </label>
+      <div class="rcpt-ctas">
+        <button class="btn-primary lg" data-action="rcp-commit"${chosen ? '' : ' disabled'}>הוספת ${chosen} מוצרים לרשימה</button>
+        <button class="btn-outline" data-action="rcp-reset">מתכון אחר</button>
+      </div>`;
+  } else {
+    main = `
+      ${r.error ? `<div class="rcpt-error">⚠ ${esc(r.error)}</div>` : ''}
+      <div class="card rcp-input-card">
+        <h3>🔗 קישור למתכון</h3>
+        <p class="muted sm">הדביקו קישור לעמוד מתכון (10 דקות, פודי, מאקו ועוד) — נחלץ את
+          רשימת המצרכים, ואתם בוחרים את המוצר המדויק לכל מצרך.</p>
+        <div class="rcp-url-row">
+          <input id="rcpUrl" class="input" dir="ltr" inputmode="url" enterkeyhint="go"
+            placeholder="https://www.example.co.il/recipe" value="${esc(r.url)}">
+          <button class="btn-primary" data-action="rcp-fetch">שליפת המתכון</button>
+        </div>
+        <button class="btn-ghost sm" data-action="rcp-paste-toggle">
+          ${r.pasteOpen ? 'סגירת ההדבקה הידנית' : 'אין קישור? הדביקו את רשימת המצרכים כטקסט'}</button>
+        ${r.pasteOpen ? `
+          <textarea id="rcpText" class="input rcp-textarea" rows="7"
+            placeholder="2 כוסות קמח&#10;3 ביצים&#10;חצי כוס שמן זית&#10;…">${esc(r.text)}</textarea>
+          <button class="btn-outline" data-action="rcp-paste-run">חילוץ מצרכים מהטקסט</button>` : ''}
+      </div>`;
+  }
+  const aside = `<aside class="bld-side">
+      <div class="side-card tinted">
+        <h4>איך זה עובד?</h4>
+        <ol class="rcp-steps">
+          <li>מדביקים קישור למתכון (או את המצרכים כטקסט)</li>
+          <li>אנחנו מחלצים את רשימת המצרכים</li>
+          <li>אתם בוחרים מוצר מדויק לכל מצרך — כי "קמח" זה לא מספיק ספציפי 😉</li>
+          <li>הרשימה מוכנה להשוואת מחירים</li>
+        </ol>
+      </div>
+      <div class="side-card elevated">
+        <h4>🔒 שקיפות</h4>
+        <p class="muted sm">החילוץ והבחירה קורים בדפדפן שלכם. שליפת דף המתכון נעשית ישירות,
+        ואם האתר חוסם — דרך שירותי תיווך (proxy) ציבוריים חינמיים; מועברת אליהם כתובת
+        הקישור בלבד. תמיד אפשר להדביק את המצרכים כטקסט במקום.</p>
+      </div>
+    </aside>`;
+  return `<div class="wrap page">
+    <a class="back-link" href="#/build">← חזרה לרשימה</a>
+    <h2 class="page-title">מתכון לרשימת קניות 🔗</h2>
+    <p class="page-sub">מקישור של מתכון לרשימת מוצרים אמיתית — אתם מחליטים איזה מוצר בדיוק
+      נכנס לסל, לכל מצרך.</p>
+    ${noteH()}
+    <div class="rcpt-grid">
+      <div>${main}</div>
+      ${aside}
+    </div>
+  </div>`;
+}
+
 /* ---------- router ---------- */
 const APP_SCREENS = new Set(['build', 'results', 'basket', 'done', 'saved', 'profile',
-  'receipt', 'terms', 'accessibility']);
+  'receipt', 'recipe', 'terms', 'accessibility']);
 function nav(hash) { location.hash = hash; }
 function route() {
   // split BEFORE decoding — chain labels may contain an encoded slash (%2F)
@@ -1680,8 +2067,12 @@ function buildH() {
             placeholder="חיפוש לפי שם, ברקוד או מק&quot;ט — חלב, 7290…">
           <div id="suggestBox" class="suggest" hidden></div>
         </div>
-        <button class="rcpt-cta" data-action="go-receipt">📸 <b>יש קבלה מקנייה קודמת?</b>
-          סרקו אותה ונמלא את הרשימה בשבילכם</button>
+        <div class="import-ctas">
+          <button class="rcpt-cta" data-action="go-receipt">📸 <b>יש קבלה מקנייה קודמת?</b>
+            סרקו אותה ונמלא את הרשימה בשבילכם</button>
+          <button class="rcpt-cta" data-action="go-recipe">🔗 <b>יש מתכון?</b>
+            הדביקו קישור ובחרו את המוצרים המדויקים</button>
+        </div>
         <div class="pop-block">
           ${catChips}
           <div class="block-kicker">${esc(gridTitle)}</div>
@@ -2197,7 +2588,10 @@ function termsH() {
       חיפוש כתובת ותמונות מוצרים כרוכים בפנייה לשירותים חיצוניים (OpenStreetMap /
       Open Food Facts) בהתאם לתנאי אותם שירותים.
       סריקת קבלות מתבצעת כולה במכשיר המשתמש: תמונת הקבלה מעובדת בדפדפן בלבד,
-      אינה נשלחת לשרת כלשהו ואינה נשמרת על ידי החברה. תוסף הדפדפן של ליםSlim שומר את
+      אינה נשלחת לשרת כלשהו ואינה נשמרת על ידי החברה.
+      בייבוא מתכון מקישור, שליפת דף המתכון עשויה להתבצע דרך שירותי תיווך (proxy)
+      ציבוריים חינמיים; במקרה כזה מועברת לשירות התיווך כתובת הקישור בלבד, ותמיד
+      ניתן להדביק את רשימת המצרכים כטקסט במקום. תוסף הדפדפן של ליםSlim שומר את
       רשימת ההעברה באחסון המקומי של הדפדפן בלבד, אינו אוסף מידע אישי, אינו ניגש
       לסיסמאות ואינו שולח נתונים לשום שרת.</p>
       <h4>7. שינויים ודין חל</h4>
@@ -2322,6 +2716,7 @@ function render() {
     case 'saved': body = savedH(); break;
     case 'profile': body = profileH(); break;
     case 'receipt': body = receiptH(); break;
+    case 'recipe': body = recipeH(); break;
     case 'terms': body = termsH(); break;
     case 'accessibility': body = accessibilityH(); break;
     default: body = buildH();
@@ -2350,6 +2745,31 @@ function bindScreen() {
   }
   const sv = $('#rcptSaveList');
   if (sv) sv.addEventListener('change', () => { state.receipt.saveAsList = sv.checked; });
+  const rcpSv = $('#rcpSaveList');
+  if (rcpSv) rcpSv.addEventListener('change', () => { state.recipe.saveAsList = rcpSv.checked; });
+  const rcpUrl = $('#rcpUrl');
+  if (rcpUrl) {
+    rcpUrl.addEventListener('input', () => { state.recipe.url = rcpUrl.value; });
+    rcpUrl.addEventListener('keydown', e => { if (e.key === 'Enter') startRecipeFetch(rcpUrl.value); });
+  }
+  const rcpText = $('#rcpText');
+  if (rcpText) rcpText.addEventListener('input', () => { state.recipe.text = rcpText.value; });
+  // per-ingredient product search: replaces only that row's chips, keeps focus
+  document.querySelectorAll('.rcp-search').forEach(inp => {
+    let timer = 0;
+    inp.addEventListener('input', () => {
+      clearTimeout(timer);
+      timer = setTimeout(() => {
+        const row = state.recipe.ingredients[+inp.dataset.i];
+        if (!row) return;
+        row.search = inp.value;
+        const q = inp.value.trim() || row.term;
+        row.cands = recipeCandidates(q).map(p => p.k);
+        const list = inp.closest('.rcp-chips')?.querySelector('.rcp-chip-list');
+        if (list) { list.innerHTML = rcpChipsListH(row, +inp.dataset.i); scanImages(); }
+      }, 250);
+    });
+  });
   const rf = $('#rcptFile');
   if (rf) {
     rf.addEventListener('change', () => startReceiptScan(rf.files && rf.files[0]));
@@ -2527,6 +2947,35 @@ document.addEventListener('click', e => {
       resetReceipt();
       nav('#/build');
       break;
+    case 'go-recipe': state.visited = true; persistPrefs(); nav('#/recipe'); break;
+    case 'rcp-fetch': startRecipeFetch(($('#rcpUrl') || {}).value); break;
+    case 'rcp-paste-toggle':
+      state.recipe.pasteOpen = !state.recipe.pasteOpen;
+      render(); break;
+    case 'rcp-paste-run': startRecipeText(($('#rcpText') || {}).value); break;
+    case 'rcp-pick': {
+      const row = state.recipe.ingredients[+btn.dataset.i];
+      if (row) {
+        row.chosen = row.chosen === btn.dataset.key ? null : btn.dataset.key;
+        render();
+      }
+      break;
+    }
+    case 'rcp-have': {
+      const row = state.recipe.ingredients[+btn.dataset.i];
+      if (row) { row.have = !row.have; render(); }
+      break;
+    }
+    case 'rcp-inc': case 'rcp-dec': {
+      const row = state.recipe.ingredients[+btn.dataset.i];
+      if (row) {
+        row.qty = Math.max(1, Math.min(99, row.qty + (a === 'rcp-inc' ? 1 : -1)));
+        render();
+      }
+      break;
+    }
+    case 'rcp-commit': commitRecipe(); break;
+    case 'rcp-reset': resetRecipe(); render(); break;
     case 'go-setup': nav('#/setup'); break;
     case 'go-results': nav('#/results'); break;
     case 'go-saved': nav('#/saved'); break;

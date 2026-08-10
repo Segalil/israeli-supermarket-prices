@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<title>שקשוקה קלאסית של סבתא — אתר מתכונים לדוגמה</title>
+<!-- Fixture page for the recipe-import feature: structured like real Israeli
+     recipe sites (schema.org Recipe JSON-LD inside an @graph, plus a visible
+     ingredient list). Served same-origin in tests so no CORS proxy is needed. -->
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "Organization",
+      "name": "אתר מתכונים לדוגמה"
+    },
+    {
+      "@type": ["Recipe", "NewsArticle"],
+      "name": "שקשוקה קלאסית של סבתא",
+      "recipeYield": "4 מנות",
+      "recipeIngredient": [
+        "6 ביצים",
+        "2 כפות שמן זית",
+        "1 בצל גדול קצוץ",
+        "3 שיני שום כתושות",
+        "1 פלפל אדום חתוך לקוביות",
+        "800 גרם עגבניות מרוסקות (2 קופסאות)",
+        "2 כפיות פפריקה מתוקה",
+        "חצי כפית כמון טחון",
+        "מלח ופלפל שחור לפי הטעם",
+        "צרור פטרוזיליה קצוצה להגשה",
+        "לחם טרי להגשה"
+      ],
+      "recipeInstructions": [
+        { "@type": "HowToStep", "text": "מטגנים את הבצל בשמן זית עד הזהבה." },
+        { "@type": "HowToStep", "text": "מוסיפים שום, פלפל ותבלינים ומטגנים עוד דקה." },
+        { "@type": "HowToStep", "text": "יוצקים את העגבניות ומבשלים 10 דקות; יוצרים גומות ושוברים פנימה את הביצים." }
+      ]
+    }
+  ]
+}
+</script>
+</head>
+<body>
+<h1>שקשוקה קלאסית של סבתא</h1>
+<p>מתכון פשוט ומנצח לשקשוקה עם עגבניות מרוסקות וביצים.</p>
+<h2>מצרכים</h2>
+<ul class="ingredients-list">
+  <li>6 ביצים</li>
+  <li>2 כפות שמן זית</li>
+  <li>1 בצל גדול קצוץ</li>
+  <li>3 שיני שום כתושות</li>
+  <li>1 פלפל אדום חתוך לקוביות</li>
+  <li>800 גרם עגבניות מרוסקות (2 קופסאות)</li>
+  <li>2 כפיות פפריקה מתוקה</li>
+  <li>חצי כפית כמון טחון</li>
+  <li>מלח ופלפל שחור לפי הטעם</li>
+  <li>צרור פטרוזיליה קצוצה להגשה</li>
+  <li>לחם טרי להגשה</li>
+</ul>
+<h2>אופן ההכנה</h2>
+<ol>
+  <li>מטגנים את הבצל בשמן זית עד הזהבה.</li>
+  <li>מוסיפים שום, פלפל ותבלינים ומטגנים עוד דקה.</li>
+  <li>יוצקים את העגבניות ומבשלים 10 דקות; שוברים פנימה את הביצים.</li>
+</ol>
+</body>
+</html>

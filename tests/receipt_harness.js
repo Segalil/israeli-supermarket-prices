@@ -5,43 +5,14 @@
 'use strict';
 const fs = require('fs');
 const path = require('path');
+const loadApp = require('./load_app');
+const { prod } = loadApp;
 
 const ROOT = path.join(__dirname, '..');
-
-/* ---- minimal DOM so app.js top-level runs ---- */
-const noopEl = () => ({
-  style: {}, dataset: {}, classList: { add() {}, remove() {}, toggle() {} },
-  addEventListener() {}, appendChild() {}, setAttribute() {}, querySelector: () => null,
-  querySelectorAll: () => [],
-});
-global.window = { addEventListener() {}, dispatchEvent() {}, scrollTo() {} };
-global.location = { hash: '' };
-try { global.navigator = { onLine: true }; } catch (_) {}  // modern node ships its own
-global.localStorage = { getItem: () => null, setItem() {}, removeItem() {} };
-global.matchMedia = () => ({ matches: false });
-global.document = {
-  querySelector: () => null,
-  querySelectorAll: () => [],
-  getElementById: () => null,
-  addEventListener() {},
-  createElement: noopEl,
-  documentElement: { dataset: {}, classList: { toggle() {} } },
-  body: { appendChild() {}, style: {} },
-};
-
-/* ---- load app.js and export its internals from the eval scope ---- */
-const harness = {};
-global.__exports = obj => Object.assign(harness, obj);
-const code = fs.readFileSync(path.join(ROOT, 'site', 'app.js'), 'utf8');
-// eslint-disable-next-line no-eval
-eval(code + '\n;__exports({ state, matchReceiptText, parseReceiptText, receiptTokens,' +
-  ' receiptCodeCandidates, receiptPriceFrom });');
+const harness = loadApp(['state', 'matchReceiptText', 'parseReceiptText',
+  'receiptTokens', 'receiptCodeCandidates', 'receiptPriceFrom']);
 
 /* ---- fixture catalog: the receipt's products + distractors ---- */
-function prod(k, n, prices, codes) {
-  return { k, n, u: '', b: '', p: prices, al: null, pm: null, c: 0,
-    codes: codes || [k], nLow: n.toLowerCase(), bLow: '' };
-}
 const P = [
   prod('7290000272467', 'סירופ דיאט פטל עסיס 1 ליטר', [11.7, 11.9, null]),
   prod('7290005996276', 'פסטרמה בקביקיו דק דק 120 גר', [13.9, null, 14.9]),

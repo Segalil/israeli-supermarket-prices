@@ -105,6 +105,22 @@ Downloading is done via the il-supermarket-scraper library (PyPI).
     (samples/receipt-scan/) through site/app.js in node via
     tests/receipt_harness.js; samples/receipt-scan/make_receipt.py regenerates
     the synthetic receipt PNG for manual browser testing.
+  * recipe import (#/recipe, CTA on build next to the receipt one): paste a
+    recipe URL (or the ingredient text) → ingredient rows → the USER picks the
+    exact product per ingredient (human-in-the-middle by design — nothing is
+    auto-selected; "יש לי בבית" skips a row; per-row search replaces only that
+    row's chips so focus survives). Extraction order: schema.org Recipe
+    JSON-LD (regex-scanned → node-testable), DOM ingredient selectors,
+    "מצרכים" text-section scan; pasted text stops at an instructions header.
+    URL fetch: direct, then free public CORS relays (RECIPE_PROXIES — the
+    paste path is the always-works fallback; terms disclose the relays).
+    ingredientTerm strips leading qty/units (RCP_NUM_RE/RCP_UNITS) and
+    descriptor words anywhere (RCP_DESCR); buildRecipeRows shortens a term
+    word-by-word until the catalog answers. Commit merges into the list and
+    (opt-out) saves as "מתכון: <name>" (kicker "ממתכון 🔗"). Tests:
+    tests/test_recipe_import.py → tests/recipe_harness.js over
+    samples/recipe-import/fixture-recipe.html (loader shared in
+    tests/load_app.js).
   * auth: FIREBASE_CONFIG=null → device-profile mode; paste a Firebase web
     config to enable real login/signup (email+password + Google popup +
     password reset) with per-user Firestore sync — SYNC_KEYS localStorage
