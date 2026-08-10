@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "ליםSlim — העברת סל לרשתות",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "מעביר את רשימת הקניות מ־ליםSlim אל עגלת הקנייה באתר הרשת — בתוך החשבון שלכם ובשליטתכם המלאה.",
   "icons": {
     "16": "icons/icon16.png",
@@ -10,21 +10,78 @@
     "128": "icons/icon128.png"
   },
   "homepage_url": "https://segalil.github.io/israeli-supermarket-prices/",
-  "permissions": ["storage"],
+  "permissions": [
+    "storage"
+  ],
   "content_scripts": [
     {
-      "matches": ["https://segalil.github.io/*", "http://localhost:8737/*"],
-      "js": ["bridge.js"]
+      "matches": [
+        "https://segalil.github.io/*",
+        "http://localhost:8737/*"
+      ],
+      "js": [
+        "bridge.js"
+      ]
     },
     {
-      "matches": ["https://www.shufersal.co.il/*"],
-      "js": ["chains/shufersal.js", "panel.js"],
-      "css": ["panel.css"]
+      "matches": [
+        "https://www.shufersal.co.il/*"
+      ],
+      "js": [
+        "chains/shufersal.js",
+        "panel.js"
+      ],
+      "css": [
+        "panel.css"
+      ]
     },
     {
-      "matches": ["https://www.rami-levy.co.il/*"],
-      "js": ["chains/rami-levy.js", "panel.js"],
-      "css": ["panel.css"]
+      "matches": [
+        "https://www.rami-levy.co.il/*"
+      ],
+      "js": [
+        "chains/rami-levy.js",
+        "panel.js"
+      ],
+      "css": [
+        "panel.css"
+      ]
+    },
+    {
+      "matches": [
+        "https://yochananof.co.il/*"
+      ],
+      "js": [
+        "chains/yochananof.js",
+        "panel.js"
+      ],
+      "css": [
+        "panel.css"
+      ]
+    },
+    {
+      "matches": [
+        "https://www.victoryonline.co.il/*"
+      ],
+      "js": [
+        "chains/victory.js",
+        "panel.js"
+      ],
+      "css": [
+        "panel.css"
+      ]
+    },
+    {
+      "matches": [
+        "https://www.carrefour.co.il/*"
+      ],
+      "js": [
+        "chains/carrefour.js",
+        "panel.js"
+      ],
+      "css": [
+        "panel.css"
+      ]
     }
   ]
 }

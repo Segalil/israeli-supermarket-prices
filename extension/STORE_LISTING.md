@@ -29,7 +29,7 @@ Developer Dashboard → **New item** → העלאת `extension.zip` (נבנה ב
 • הכול בתוך החשבון שלכם: התוסף לא מבקש סיסמאות, לא מתחבר בשמכם
   ולא שולח מידע לשום שרת
 
-רשתות נתמכות: שופרסל, רמי לוי. עוד בדרך.
+רשתות נתמכות: שופרסל, רמי לוי, ויקטורי, יינות ביתן / קרפור, יוחננוף.
 
 האתר: https://segalil.github.io/israeli-supermarket-prices/
 
@@ -48,8 +48,9 @@ session and under their control.
   it survives page navigations on the supermarket site. Nothing is transmitted.
 - Host access `segalil.github.io` — reads the transfer list the user created on
   the ליםSlim site.
-- Host access `shufersal.co.il`, `rami-levy.co.il` — shows the transfer panel
-  and performs the add-to-cart clicks the user requested on these stores.
+- Host access `shufersal.co.il`, `rami-levy.co.il`, `yochananof.co.il`,
+  `victoryonline.co.il`, `carrefour.co.il` — shows the transfer panel and
+  performs the add-to-cart clicks the user requested on these supermarkets.
 
 **Data usage:** The extension does not collect, transmit, sell, or share any
 user data. The shopping list is stored locally (chrome.storage.local) only.

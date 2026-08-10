@@ -7,7 +7,10 @@
   const cfg = window.SLIM_CHAIN;
   if (!cfg || !chrome?.storage) return;
 
-  const { handoff, progress = {} } = await chrome.storage.local.get(['handoff', 'progress']);
+  const { handoff, progress = {}, progressTriedName: triedNameStored = {} } =
+    await chrome.storage.local.get(['handoff', 'progress', 'progressTriedName']);
+  const triedNameMap = progress.id === handoff?.id ? triedNameStored : {};
+  const progressTriedName = () => triedNameMap;
   if (!handoff || !Array.isArray(handoff.items) || !handoff.items.length) return;
   if (handoff.chain !== cfg.label) return;         // a different chain was chosen
   if (progress.dismissed === handoff.id) return;   // user closed the panel for this handoff
@@ -102,7 +105,20 @@
     if (!item) return;
     setStatus('מחפש את המוצר בדף…');
     const tile = await waitFor(cfg.tileSelectors);
-    if (!tile) { setStatus('לא נמצאו תוצאות — הוסיפו ידנית או דלגו'); return; }
+    if (!tile) {
+      // barcode search found nothing — retry once by product name
+      const triedName = progressTriedName();
+      if (cfg.barcodeSearch && item.ean && !triedName[state.idx] &&
+          location.href.includes(item.ean)) {
+        triedName[state.idx] = true;
+        await chrome.storage.local.set({ progressTriedName: triedName });
+        setStatus('לא נמצא לפי ברקוד — מנסה לפי שם…');
+        location.href = cfg.searchUrl(item.name);
+        return;
+      }
+      setStatus('לא נמצאו תוצאות — הוסיפו ידנית או דלגו');
+      return;
+    }
     let addBtn = null;
     for (const sel of cfg.addSelectors) {
       addBtn = tile.querySelector(sel) || document.querySelector(sel);
