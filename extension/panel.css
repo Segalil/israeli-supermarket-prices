@@ -1,0 +1,44 @@
+#slim-panel {
+  position: fixed; bottom: 20px; right: 20px; z-index: 2147483000;
+  width: 300px; background: #fffdfc; color: #524646;
+  border: 1px solid #eae4e0; border-radius: 20px;
+  box-shadow: 0 12px 32px rgba(82, 70, 70, .28);
+  font-family: "Assistant", -apple-system, system-ui, sans-serif;
+  font-size: 14px; line-height: 1.5; padding: 14px;
+  direction: rtl; text-align: right;
+}
+#slim-panel .slim-head {
+  display: flex; align-items: center; gap: 8px; margin-bottom: 10px;
+}
+#slim-panel .slim-head b { font-size: 15px; }
+#slim-panel .slim-count {
+  background: #e8f0ea; color: #256a73; border-radius: 999px;
+  padding: 1px 10px; font-size: 12px; font-weight: 700;
+}
+#slim-panel .slim-x {
+  margin-inline-start: auto; border: 0; background: none;
+  font-size: 20px; color: #a3958f; cursor: pointer; line-height: 1;
+}
+#slim-panel .slim-item-name { font-weight: 700; }
+#slim-panel .slim-item-meta { font-size: 12px; color: #6a5e5b; }
+#slim-panel .slim-status {
+  margin: 8px 0; padding: 7px 12px; border-radius: 12px;
+  background: #f7f4f1; font-size: 12.5px; color: #6a5e5b;
+}
+#slim-panel .slim-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+#slim-panel .slim-btn {
+  border: 1px solid #35858e; background: none; color: #256a73;
+  border-radius: 999px; padding: 7px 14px; font: inherit;
+  font-size: 13px; font-weight: 700; cursor: pointer;
+}
+#slim-panel .slim-btn.primary { background: #35858e; color: #fff; border-color: #35858e; }
+#slim-panel .slim-btn.subtle { border-color: #eae4e0; color: #6a5e5b; font-weight: 600; }
+#slim-panel .slim-btn:hover { filter: brightness(1.05); }
+#slim-panel .slim-list { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 10px; }
+#slim-panel .slim-dot {
+  width: 10px; height: 10px; border-radius: 999px;
+  background: #ded6d1; display: inline-block;
+}
+#slim-panel .slim-dot.ok { background: #7da78c; }
+#slim-panel .slim-dot.cur { outline: 2px solid #35858e; outline-offset: 1px; }
+#slim-panel .slim-done { font-weight: 700; margin: 8px 0 12px; }

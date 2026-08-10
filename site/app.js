@@ -211,6 +211,10 @@ function logoSvg(size, dark) {
 function avatar(text, cls = '') {
   return `<span class="avatar ${cls}">${esc((text || '?').trim().charAt(0))}</span>`;
 }
+/* the ליםSlim browser extension marks the page when installed */
+function hasExtension() {
+  return !!document.documentElement.dataset.slimExtension;
+}
 
 /* ---------- product images: OpenFoodFacts by barcode, emoji/letter fallback ---------- */
 const imgCache = new Map();
@@ -1334,8 +1338,10 @@ function basketH() {
           ${belowMin ? `<div class="co-row warn"><span>שימו לב</span><b>מתחת למינימום ${ils0(m.min)}</b></div>` : ''}
         </div>
         <div class="co-total"><span>לתשלום (משוער)</span><span class="co-total-num">${ils0(total)}</span></div>
-        <button class="btn-primary block" data-action="handoff" data-chain="${esc(label)}">בניית ההזמנה ב${esc(label)}</button>
-        <p class="fine center">ההזמנה נבנית בעגלת האתר של הרשת — הרשימה תועתק ללוח והחנות תיפתח בלשונית חדשה. התשלום מתבצע מול הרשת.</p>
+        <button class="btn-primary block" data-action="handoff" data-chain="${esc(label)}">${hasExtension() ? '🔌 מילוי העגלה ב' + esc(label) : 'בניית ההזמנה ב' + esc(label)}</button>
+        <p class="fine center">${hasExtension()
+          ? 'התוסף יפתח את אתר הרשת וילווה אתכם בהוספת הפריטים לעגלה — בתוך החשבון שלכם. התשלום מתבצע מול הרשת.'
+          : 'ההזמנה נבנית בעגלת האתר של הרשת — הרשימה תועתק ללוח והחנות תיפתח בלשונית חדשה. התשלום מתבצע מול הרשת.'}</p>
       </aside>
     </div>
   </div>`;
@@ -1783,6 +1789,22 @@ function doHandoff(label) {
   for (const pr of subsAccepted) rows.push(`${i++}. ${pr.n} (חלופה) — ×1 — ${money(effPriceAt(pr, label) || 0)}`);
   rows.push('', `סה״כ משוער כולל משלוח: ${ils0(total)}`);
   copyText(rows.join('\n'));
+  // handoff payload for the ליםSlim browser extension (fills the cart inside
+  // the user's own session on the chain's site)
+  try {
+    const payload = {
+      id: Date.now().toString(36),
+      chain: label,
+      date: state.date,
+      total,
+      items: [
+        ...lines.map(({ pr, qty }) => ({ name: pr.n, qty, ean: productEan(pr) })),
+        ...subsAccepted.map(pr => ({ name: pr.n, qty: 1, ean: productEan(pr) })),
+      ],
+    };
+    localStorage.setItem('slim-handoff-v1', JSON.stringify(payload));
+    window.dispatchEvent(new Event('slim-handoff'));
+  } catch (_) {}
   if (m.home) window.open(m.home, '_blank', 'noopener');
   state.orders.unshift({ store: label, date: state.date || new Date().toISOString().slice(0, 10),
     count: lines.length + subsAccepted.length, total,

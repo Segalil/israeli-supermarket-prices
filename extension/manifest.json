@@ -1,0 +1,23 @@
+{
+  "manifest_version": 3,
+  "name": "ליםSlim — העברת סל לרשתות",
+  "version": "0.1.0",
+  "description": "מעביר את רשימת הקניות מ־ליםSlim אל עגלת הקנייה באתר הרשת — בתוך החשבון שלכם ובשליטתכם המלאה.",
+  "permissions": ["storage"],
+  "content_scripts": [
+    {
+      "matches": ["https://segalil.github.io/*", "http://localhost:8737/*"],
+      "js": ["bridge.js"]
+    },
+    {
+      "matches": ["https://www.shufersal.co.il/*"],
+      "js": ["chains/shufersal.js", "panel.js"],
+      "css": ["panel.css"]
+    },
+    {
+      "matches": ["https://www.rami-levy.co.il/*"],
+      "js": ["chains/rami-levy.js", "panel.js"],
+      "css": ["panel.css"]
+    }
+  ]
+}
