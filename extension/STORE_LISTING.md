@@ -31,7 +31,7 @@ Developer Dashboard → **New item** → העלאת `extension.zip` (נבנה ב
 
 רשתות נתמכות: שופרסל, רמי לוי, ויקטורי, יינות ביתן / קרפור, יוחננוף.
 
-האתר: https://segalil.github.io/israeli-supermarket-prices/
+האתר: https://slim-super.com/
 
 **קטגוריה:** Shopping
 **שפה:** עברית
@@ -46,8 +46,8 @@ session and under their control.
 **Permission justifications:**
 - `storage` — holds the user's transfer list (items + chosen chain) locally so
   it survives page navigations on the supermarket site. Nothing is transmitted.
-- Host access `segalil.github.io` — reads the transfer list the user created on
-  the ליםSlim site.
+- Host access `slim-super.com` (and `segalil.github.io`, the legacy address) —
+  reads the transfer list the user created on the ליםSlim site.
 - Host access `shufersal.co.il`, `rami-levy.co.il`, `yochananof.co.il`,
   `victoryonline.co.il`, `carrefour.co.il` — shows the transfer panel and
   performs the add-to-cart clicks the user requested on these supermarkets.
@@ -56,7 +56,7 @@ session and under their control.
 user data. The shopping list is stored locally (chrome.storage.local) only.
 
 **Privacy policy URL:**
-https://segalil.github.io/israeli-supermarket-prices/#/terms
+https://slim-super.com/#/terms
 
 ## נכסים גרפיים
 - אייקון 128px: `icons/icon128.png` (כבר בתוך ה־zip)

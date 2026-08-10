@@ -20,7 +20,7 @@ const DATA_URL = 'data/products.json.gz';
         }
    5. Project settings → Your apps → Web app (</>) → copy the config object
       and paste it below in place of `null`
-   6. Authentication → Settings → Authorized domains → add segalil.github.io
+   6. Authentication → Settings → Authorized domains → add slim-super.com
    Until then the site runs in device-profile mode (no password, this browser
    only). */
 const FIREBASE_CONFIG = null;

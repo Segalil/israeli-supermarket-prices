@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "ליםSlim — העברת סל לרשתות",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "מעביר את רשימת הקניות מ־ליםSlim אל עגלת הקנייה באתר הרשת — בתוך החשבון שלכם ובשליטתכם המלאה.",
   "icons": {
     "16": "icons/icon16.png",
@@ -9,13 +9,15 @@
     "48": "icons/icon48.png",
     "128": "icons/icon128.png"
   },
-  "homepage_url": "https://segalil.github.io/israeli-supermarket-prices/",
+  "homepage_url": "https://slim-super.com/",
   "permissions": [
     "storage"
   ],
   "content_scripts": [
     {
       "matches": [
+        "https://slim-super.com/*",
+        "https://www.slim-super.com/*",
         "https://segalil.github.io/*",
         "http://localhost:8737/*"
       ],
