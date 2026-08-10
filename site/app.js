@@ -435,7 +435,12 @@ async function initAuth() {
     ]);
     firebase.initializeApp(FIREBASE_CONFIG);
     state.auth = { mode: 'firebase', user: null, ready: false };
-    firebase.auth().getRedirectResult().catch(err => {
+    firebase.auth().getRedirectResult().then(cred => {
+      // registration that completed via the mobile/blocked-popup redirect
+      // flow → same receipt-scan onboarding step as the popup flow
+      if (cred && cred.user && cred.additionalUserInfo && cred.additionalUserInfo.isNewUser)
+        welcomeToReceipt();
+    }).catch(err => {
       state.authError = authErrHe(err);
       render();
     });
@@ -538,7 +543,7 @@ async function authSubmit() {
     }
     state.visited = true; persistPrefs();
     state.authBusy = false;
-    nav('#/build');
+    if (state.authMode === 'signup') welcomeToReceipt(); else nav('#/build');
   } catch (err) {
     state.authError = authErrHe(err);
     state.authBusy = false; render();
@@ -551,11 +556,13 @@ async function authGoogle() {
   const mobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
   try {
     if (mobile) { await firebase.auth().signInWithRedirect(provider); return; }
-    await firebase.auth().signInWithPopup(provider);
+    const cred = await firebase.auth().signInWithPopup(provider);
     state.visited = true; persistPrefs();
     state.authBusy = false;
     toast('התחברת עם Google ☁');
-    nav('#/build');
+    // a first-ever sign-in is a registration → receipt-scan onboarding step
+    if (cred && cred.additionalUserInfo && cred.additionalUserInfo.isNewUser) welcomeToReceipt();
+    else nav('#/build');
   } catch (err) {
     if (err && (err.code === 'auth/popup-blocked' ||
                 err.code === 'auth/operation-not-supported-in-this-environment')) {
@@ -565,6 +572,12 @@ async function authGoogle() {
     state.authError = authErrHe(err);
     state.authBusy = false; render();
   }
+}
+/* post-registration onboarding: start with a receipt scan that fills the list */
+function welcomeToReceipt() {
+  state.note = 'החשבון מוכן 🎉 הדרך המהירה לרשימה ראשונה: סרקו קבלה מקנייה אחרונה — ' +
+    'ונזהה בה את המוצרים. אפשר גם לדלג ולבנות את הרשימה ידנית.';
+  nav('#/receipt');
 }
 async function authReset() {
   const email = ($('#aEmail') || {}).value?.trim() || '';
@@ -1300,6 +1313,7 @@ function receiptH() {
     <h2 class="page-title">סריקת קבלה 📸</h2>
     <p class="page-sub">מצלמים קבלה מקנייה קודמת — אנחנו מזהים את המוצרים לפי המק״ט והשם,
       ובונים מהם רשימה עם מחירי היום בכל הרשתות.</p>
+    ${noteH()}
     <div class="rcpt-grid">
       <div>${main}</div>
       ${tips}
@@ -1354,7 +1368,8 @@ function statusPillH() {
 }
 function navH() {
   const links = [
-    ['build', 'הרשימה'], ['results', 'השוואה'], ['saved', 'רשימות שמורות'], ['profile', 'פרופיל'],
+    ['build', 'הרשימה'], ['receipt', 'סריקת קבלה'], ['results', 'השוואה'],
+    ['saved', 'רשימות שמורות'], ['profile', 'פרופיל'],
   ].map(([key, label]) =>
     `<a class="nav-link${state.screen === key ? ' on' : ''}" href="#/${key}">${label}</a>`).join('');
   const initial = (state.profile.name || state.auth.user?.name ||
@@ -2600,13 +2615,15 @@ document.addEventListener('click', e => {
     case 'dismiss-note': state.note = ''; render(); break;
     case 'hide-ext-promo': saveLS('slim-ext-promo-hidden', true); render(); break;
     case 'save-profile': {
+      const firstTime = !state.visited;      // device-mode "registration"
       state.profile.name = ($('#fName') || {}).value?.trim() || '';
       state.profile.email = ($('#fEmail') || {}).value?.trim() || '';
       state.address = ($('#fAddress') || {}).value?.trim() || state.address;
       saveLS(LS.profile, state.profile); persistPrefs();
       state.visited = true; persistPrefs();
       toast('הפרופיל נשמר בדפדפן');
-      nav('#/build'); break;
+      if (firstTime) welcomeToReceipt(); else nav('#/build');
+      break;
     }
     case 'auth-tab':
       state.authMode = btn.dataset.mode;
