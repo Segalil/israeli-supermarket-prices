@@ -83,8 +83,13 @@ Downloading is done via the il-supermarket-scraper library (PyPI).
     computes the next typical 4h window (no Shabbat) from CHAIN_META.speed;
   * merged products keep aliases → byKey maps alias keys too, so saved lists
     survive consolidation.
-  * receipt scan (#/receipt, entry CTAs on onboarding + build): photo → OCR →
-    review → add-to-list, at zero running cost — OCR runs fully client-side via
+  * receipt scan (#/receipt; entry points: nav bar, onboarding + build CTAs,
+    saved-lists button, and the post-registration hand-off welcomeToReceipt —
+    wired into BOTH Google flows: popup cred and getRedirectResult, via
+    additionalUserInfo.isNewUser): photo → OCR → review (opt-out checkbox also
+    saves the scan as a saved list, kicker "מקבלה 📸"; receipt.returnTo routes
+    the commit back to #/saved when launched from there) → add-to-list, at
+    zero running cost — OCR runs fully client-side via
     tesseract.js (pinned 5.1.1, lazy jsDelivr load, 'heb+eng' because heb
     alone garbles digits; models cached in IndexedDB, photo never uploaded).
     Matching is CODE-FIRST: receipts print each item's מק"ט/barcode and digits

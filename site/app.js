@@ -180,7 +180,8 @@ const state = {
   lastHandoff: null,
   visited: false,
   seeded: false,
-  receipt: { stage: 'idle', progress: 0, statusText: '', imgUrl: '', items: [], error: '' },
+  receipt: { stage: 'idle', progress: 0, statusText: '', imgUrl: '', items: [], error: '',
+    saveAsList: true, returnTo: '' },
   pendingSearch: '',          // build-screen search prefill (receipt → manual search)
 };
 
@@ -575,6 +576,7 @@ async function authGoogle() {
 }
 /* post-registration onboarding: start with a receipt scan that fills the list */
 function welcomeToReceipt() {
+  state.receipt.returnTo = '';
   state.note = 'החשבון מוכן 🎉 הדרך המהירה לרשימה ראשונה: סרקו קבלה מקנייה אחרונה — ' +
     'ונזהה בה את המוצרים. אפשר גם לדלג ולבנות את הרשימה ידנית.';
   nav('#/receipt');
@@ -1198,23 +1200,31 @@ async function startReceiptScan(file) {
 function resetReceipt() {
   const r = state.receipt;
   if (r.imgUrl) URL.revokeObjectURL(r.imgUrl);
+  // saveAsList + returnTo survive a "scan another" reset; go-receipt re-arms them
   Object.assign(r, { stage: 'idle', progress: 0, statusText: '', imgUrl: '', items: [], error: '' });
 }
 
 function commitReceipt() {
   const r = state.receipt;
-  let added = 0;
-  for (const it of r.items) {
-    if (!it.on || !it.pr) continue;
+  const picked = r.items.filter(it => it.on && it.pr);
+  if (!picked.length) { toast('לא סומנו מוצרים להוספה'); return; }
+  for (const it of picked) {
     state.list.set(it.pr.k, Math.min(99, (state.list.get(it.pr.k) || 0) + it.qty));
-    added++;
   }
-  if (!added) { toast('לא סומנו מוצרים להוספה'); return; }
   persistList();
-  state.note = `נוספו ${added} מוצרים מסריקת הקבלה 📸 — בדקו את הרשימה והמשיכו להשוואה.`;
+  let savedMsg = '';
+  if (r.saveAsList) {
+    state.saved.unshift({ id: 'own-' + Date.now(), kicker: 'מקבלה 📸',
+      name: 'סריקת קבלה · ' + new Date().toLocaleDateString('he-IL'),
+      codes: picked.map(it => [it.pr.k, it.qty]), created: state.date });
+    saveLS(LS.saved, state.saved);
+    savedMsg = ', ונשמרה גם ברשימות השמורות לשימוש חוזר';
+  }
+  state.note = `נוספו ${picked.length} מוצרים מסריקת הקבלה 📸${savedMsg}.`;
   state.visited = true; persistPrefs();
+  const dest = r.returnTo === 'saved' ? '#/saved' : '#/build';
   resetReceipt();
-  nav('#/build');
+  nav(dest);
 }
 
 function receiptH() {
@@ -1294,6 +1304,10 @@ function receiptH() {
         ${rows}
       </div>
       ${missH}
+      <label class="rcpt-save-opt">
+        <input type="checkbox" id="rcptSaveList"${r.saveAsList ? ' checked' : ''}>
+        <span>לשמור את הקנייה גם כרשימה שמורה — לטעינה חוזרת בקנייה הבאה</span>
+      </label>
       <div class="rcpt-ctas">
         <button class="btn-primary lg" data-action="rcpt-commit">הוספת ${onCount} מוצרים לרשימה</button>
         <button class="btn-outline" data-action="rcpt-reset">סריקת קבלה נוספת</button>
@@ -2013,6 +2027,7 @@ function savedH() {
         ${selCount > 1 ? '<button class="btn-primary" data-action="merge-lists">איחוד הרשימות שנבחרו</button>' : ''}
         ${selCount > 0 ? '<button class="btn-outline" data-action="clear-select">ניקוי הבחירה</button>' : ''}
         <button class="btn-outline" data-action="save-list">שמירת הרשימה הנוכחית</button>
+        <button class="btn-outline" data-action="go-receipt" data-from="saved">📸 רשימה חדשה מקבלה</button>
       </div>
     </div>
     <div class="saved-grid">${cards}</div>
@@ -2333,6 +2348,8 @@ function bindScreen() {
       renderSuggest(si.value);
     }
   }
+  const sv = $('#rcptSaveList');
+  if (sv) sv.addEventListener('change', () => { state.receipt.saveAsList = sv.checked; });
   const rf = $('#rcptFile');
   if (rf) {
     rf.addEventListener('change', () => startReceiptScan(rf.files && rf.files[0]));
@@ -2485,7 +2502,10 @@ document.addEventListener('click', e => {
   switch (a) {
     case 'reload': loadData(); render(); break;
     case 'go-build': state.visited = true; persistPrefs(); nav('#/build'); break;
-    case 'go-receipt': state.visited = true; persistPrefs(); nav('#/receipt'); break;
+    case 'go-receipt':
+      state.visited = true; persistPrefs();
+      state.receipt.returnTo = btn.dataset.from || '';
+      nav('#/receipt'); break;
     case 'rcpt-pick': { const rf = $('#rcptFile'); if (rf) rf.click(); break; }
     case 'rcpt-toggle': {
       const it = state.receipt.items[+btn.dataset.idx];

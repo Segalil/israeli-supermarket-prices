@@ -685,6 +685,11 @@ html.a11y-noanim *, html.a11y-noanim *::before, html.a11y-noanim *::after {
   padding: 9px 0; border-bottom: 1px solid var(--divider);
 }
 .rcpt-miss-row:last-of-type { border-bottom: 0; }
+.rcpt-save-opt {
+  display: flex; align-items: center; gap: 10px; margin-top: 16px;
+  font-weight: 600; color: var(--text-2); cursor: pointer;
+}
+.rcpt-save-opt input { width: 18px; height: 18px; accent-color: var(--brand); cursor: pointer; }
 .rcpt-ctas { display: flex; gap: 12px; margin-top: 18px; flex-wrap: wrap; }
 .rcpt-ctas.center { justify-content: center; margin-top: 0; }
 
