@@ -218,6 +218,28 @@ function avatar(text, cls = '') {
 function hasExtension() {
   return !!document.documentElement.dataset.slimExtension;
 }
+/* Chrome Web Store URL of the extension — paste once the listing is approved
+   and every promo becomes a live install button */
+const EXTENSION_URL = null;
+function extensionPromoH(compact = false) {
+  if (hasExtension()) return '';
+  const cta = EXTENSION_URL
+    ? `<a class="btn-primary sm" href="${EXTENSION_URL}" target="_blank" rel="noopener">🧩 התקנת התוסף</a>`
+    : `<span class="tag promo-tag">בקרוב בחנות Chrome</span>`;
+  if (compact) {
+    if (loadLS('slim-ext-promo-hidden', false)) return '';
+    return `<div class="side-card tinted ext-promo">
+      <button class="note-x" data-action="hide-ext-promo" aria-label="סגירה">×</button>
+      <b>🧩 התוסף של ליםSlim</b>
+      <p class="muted sm">מעביר את הרשימה ישר לעגלה באתר הרשת — בלחיצה אחת, בתוך החשבון שלכם.</p>
+      ${cta}
+    </div>`;
+  }
+  return `<div class="ext-promo-inline">
+    🧩 <b>רוצים שהעגלה תתמלא לבד?</b> התוסף של ליםSlim מלווה אתכם באתר הרשת
+    ומוסיף את המוצרים לעגלה אוטומטית. ${cta}
+  </div>`;
+}
 
 /* ---------- product images: OpenFoodFacts by barcode, emoji/letter fallback ---------- */
 const imgCache = new Map();
@@ -1166,6 +1188,7 @@ function buildH() {
           <button class="btn-primary block" data-action="go-results">השוואת מחירים</button>
           <button class="btn-outline block" data-action="save-list">שמירת הרשימה</button>
         </div>
+        ${extensionPromoH(true)}
         ${promoCarouselH(true)}
       </aside>
     </div>
@@ -1394,6 +1417,7 @@ function basketH() {
         <p class="fine center">${hasExtension()
           ? 'התוסף יפתח את אתר הרשת וילווה אתכם בהוספת הפריטים לעגלה — בתוך החשבון שלכם. התשלום מתבצע מול הרשת.'
           : 'ההזמנה נבנית בעגלת האתר של הרשת — הרשימה תועתק ללוח והחנות תיפתח בלשונית חדשה. התשלום מתבצע מול הרשת.'}</p>
+        ${extensionPromoH()}
       `}
       </aside>
     </div>
@@ -1427,6 +1451,7 @@ function doneH() {
       <button class="btn-primary" data-action="go-saved">הרשימות שלי</button>
       <button class="btn-outline" data-action="go-build">חזרה לרשימה</button>
     </div>
+    ${extensionPromoH()}
   </div>`;
 }
 
@@ -2029,6 +2054,7 @@ document.addEventListener('click', e => {
       nav('#/build'); render(); break;
     }
     case 'dismiss-note': state.note = ''; render(); break;
+    case 'hide-ext-promo': saveLS('slim-ext-promo-hidden', true); render(); break;
     case 'save-profile': {
       state.profile.name = ($('#fName') || {}).value?.trim() || '';
       state.profile.email = ($('#fEmail') || {}).value?.trim() || '';

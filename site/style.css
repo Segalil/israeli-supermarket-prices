@@ -528,6 +528,16 @@ html.a11y-noanim *, html.a11y-noanim *::before, html.a11y-noanim *::after {
 }
 .instore-guide ol { margin: 8px 0 0; padding-inline-start: 18px; }
 .instore-guide li { margin: 5px 0; }
+.ext-promo { position: relative; }
+.ext-promo .note-x { position: absolute; top: 10px; inset-inline-start: 12px; }
+.ext-promo b { display: block; margin-bottom: 4px; }
+.ext-promo .btn-primary, .ext-promo .tag { margin-top: 8px; }
+.ext-promo-inline {
+  margin-top: 12px; background: var(--brand-tint); color: var(--brand-ink);
+  border-radius: var(--radius-sm); padding: 12px 16px; font-size: 13px; line-height: 1.6;
+}
+.ext-promo-inline .btn-primary { margin-top: 6px; display: inline-block; }
+.ext-promo-inline .tag { vertical-align: baseline; }
 
 /* ---------- done ---------- */
 .done { max-width: 640px; margin: 0 auto; padding: 110px 40px; text-align: center; }
