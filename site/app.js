@@ -180,6 +180,8 @@ const state = {
   lastHandoff: null,
   visited: false,
   seeded: false,
+  receipt: { stage: 'idle', progress: 0, statusText: '', imgUrl: '', items: [], error: '' },
+  pendingSearch: '',          // build-screen search prefill (receipt → manual search)
 };
 
 const $ = sel => document.querySelector(sel);
@@ -607,6 +609,7 @@ async function loadData() {
       state.byKey.set(pr.k, pr);
       for (const alias of pr.al || []) state.byKey.set(alias, pr);   // merged products keep old keys
     }
+    rcptIndex = null;                       // receipt-scan index rebuilds on demand
     state.popular = buildPopular();
 
     // active chains: saved prefs ∩ data, default all on
@@ -857,9 +860,456 @@ function bumpItem(key, d) {
   persistList();
 }
 
+/* ---------- receipt scan: photo → in-browser OCR → catalog match ----------
+   Economical by design: OCR runs entirely on the user's device via the
+   open-source Tesseract engine (WASM), lazy-loaded from a CDN only when the
+   screen is used — no paid API, no server, and the photo never leaves the
+   browser. The Hebrew model (~4MB) downloads once and is cached (IndexedDB).
+   Matching is code-first: receipts print each item's מק"ט/barcode, and digits
+   OCR far more reliably than Hebrew — a 7-13 digit hit is an exact catalog
+   match. Hebrew lines without a usable code fall back to token matching over
+   an inverted word index (final letters normalized, so OCR ם/מ mixups and
+   plural prefixes still match). */
+const TESSERACT_JS_URL = 'https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js';
+
+/* receipt lines that are never products (totals, payment, header/footer).
+   Applied only to lines WITHOUT a code that resolves in the catalog — a real
+   מק"ט wins over a suspicious word. */
+const RECEIPT_SKIP_RE = new RegExp([
+  'סה["״\']?כ', 'לתשלום', 'שולם', 'מזומן', 'אשראי', 'עודף', 'מע["״\']?מ',
+  'חשבונית', 'קבלה', 'תודה', 'להתראות', 'כרטיס', 'ויזה', 'מאסטרקארד',
+  'ישראכרט', 'מועדון', 'נקודות', 'צברת', 'חסכת', 'הנחת', 'הנחה', 'זיכוי',
+  'החזר', 'קופאי', 'בקופה', 'קופה', 'תאריך', 'שעה', 'טלפון', 'פקס',
+  'ח\\.פ', 'עוסק', 'בע["״\']?מ', 'סניף', 'רחוב', 'מספר עסקה', 'פריטים', 'ברוכים',
+].join('|'));
+/* chain names appear in receipt headers; only suspicious without a price —
+   private-label product lines ("לחם שופרסל") carry a price and survive */
+const RECEIPT_CHAIN_RE = /שופרסל|רמי לוי|ויקטורי|יוחננוף|אושר עד|טיב טעם|יינות ביתן|קרפור|חצי חינם/;
+/* generic packaging/receipt words — never count as a match signal */
+const RECEIPT_TOKEN_STOP = new Set(['גרם', 'גר', 'מל', 'ליטר', 'יח', 'יחי',
+  'יחידות', 'כמות', 'מחיר', 'מבצע', 'מארז', 'אריזה', 'קג', 'קילו', 'שח']);
+
+const HEB_FINALS = { 'ך': 'כ', 'ם': 'מ', 'ן': 'נ', 'ף': 'פ', 'ץ': 'צ' };
+function hebNorm(s) { return s.replace(/[ךםןףץ]/g, ch => HEB_FINALS[ch]); }
+
+/* strong tokens carry the match (Hebrew words, "3%"), weak tokens (bare sizes
+   like 80 / 500) only break ties — the same tokenizer runs on catalog names */
+function receiptTokens(s) {
+  const strong = [], weak = [];
+  const clean = stripQuotes(String(s).toLowerCase()).replace(/[^א-תa-z0-9%\s]/g, ' ');
+  for (const w0 of clean.split(/\s+/)) {
+    const w = hebNorm(w0);
+    if (!w) continue;
+    if (/[א-ת]/.test(w)) {
+      if (w.length >= 2 && !RECEIPT_TOKEN_STOP.has(w)) strong.push(w);
+    } else if (/^\d{1,2}%$/.test(w)) strong.push(w);
+    else if (/^\d{1,4}$/.test(w)) weak.push(w);
+  }
+  return { strong: strong.slice(0, 8), weak: weak.slice(0, 4) };
+}
+
+/* inverted index over catalog names + exact code lookup, built lazily once per
+   data load (loadData resets it) */
+let rcptIndex = null;
+function ensureReceiptIndex() {
+  if (rcptIndex) return;
+  const words = new Map(), pre3 = new Map(), codes = new Map();
+  const push = (map, key, i) => {
+    const arr = map.get(key);
+    if (arr) arr.push(i); else map.set(key, [i]);
+  };
+  state.products.forEach((pr, i) => {
+    const t = receiptTokens(pr.nLow);
+    pr.rw = t.strong; pr.rwWeak = t.weak;
+    for (const w of new Set(t.strong)) {
+      push(words, w, i);
+      if (w.length >= 3) push(pre3, w.slice(0, 3), i);
+    }
+    for (const c0 of pr.codes) {
+      const c = c0.replace(/^0+/, '');
+      if (c.length < 7 || c.length > 13) continue;   // short PLUs are chain-scoped → ambiguous
+      const prev = codes.get(c);
+      if (prev == null || avail(pr) > avail(state.products[prev])) codes.set(c, i);
+    }
+  });
+  rcptIndex = { words, pre3, codes };
+}
+
+function receiptQty(s) {
+  let m = s.match(/(?:^|\s)([1-9]\d?)\s*[x×*]/i);          // "2 X 6.90"
+  if (!m) m = s.match(/[x×*]\s*([1-9]\d?)(?![\d.,])/i);    // "X2" (not the price after X)
+  if (!m) m = s.match(/(?:^|\s)([1-9]\d?)\s*יח/);          // "2 יח'"
+  const q = m ? parseInt(m[1], 10) : 1;
+  return q >= 1 && q <= 30 ? q : 1;
+}
+
+function receiptPriceFrom(s, looseOk = false) {
+  const m = [...s.matchAll(/(\d{1,3})[.,](\d{2})(?!\d)/g)];
+  if (m.length) {
+    const last = m[m.length - 1];
+    return parseFloat(last[1] + '.' + last[2]);
+  }
+  if (looseOk) {                                  // OCR ate the decimal point
+    const lone = [...s.matchAll(/(?:^|\s)(\d{3,4})(?=\s|$)/g)];
+    if (lone.length) return parseInt(lone[lone.length - 1][1], 10) / 100;  // price ends the line
+  }
+  return null;
+}
+
+/* digit runs → candidate מק"ט codes. Receipt columns often merge in the OCR
+   ("<EAN13><price>" as one 15-17 digit run), so long runs also contribute
+   their 13/12-digit edges; bogus candidates simply miss the code index. */
+function receiptCodeCandidates(raw) {
+  const cands = [];
+  for (const run of raw.match(/\d+/g) || []) {
+    if (run.length >= 7 && run.length <= 13) cands.push(run);
+    else if (run.length >= 14 && run.length <= 18) {
+      cands.push(run.slice(0, 13), run.slice(-13), run.slice(0, 12), run.slice(-12));
+    }
+  }
+  const seen = new Set();
+  return cands.map(orig => ({ c: orig.replace(/^0+/, ''), orig }))
+    .filter(x => x.c && !seen.has(x.c) && seen.add(x.c));
+}
+
+/* OCR text → candidate product lines: {raw, tokens, weak, codes, price, qty,
+   skiplike}. skiplike lines survive only if a code resolves (matchReceiptText). */
+function parseReceiptText(text) {
+  const out = [];
+  for (const rawLine of String(text).split('\n')) {
+    const raw = rawLine.replace(/\s+/g, ' ').trim();
+    if (raw.length < 2) continue;
+    const codes = receiptCodeCandidates(raw);
+    const price = receiptPriceFrom(raw);
+    const skiplike = RECEIPT_SKIP_RE.test(raw) ||
+      (RECEIPT_CHAIN_RE.test(raw) && price == null);
+    if (skiplike && !codes.length) continue;
+    // an all-numeric line is never a product; "2 X 6.90" sets the qty of the
+    // product printed above it. The OCR sometimes reverses such lines in an
+    // RTL page ("…X2") and may read the X as א — accept those shapes too.
+    if (!codes.length && /^[\d\s.,:x×*א₪-]+$/i.test(raw)) {
+      const qm = raw.match(/^([1-9]\d?)\s*[x×*א]/i) || raw.match(/[x×*א]\s*([1-9]\d?)$/i);
+      const prev = out[out.length - 1];
+      if (qm && prev) prev.qty = Math.min(30, parseInt(qm[1], 10));
+      continue;
+    }
+    const t = receiptTokens(raw);
+    // real product lines carry a price or a code; two+ words tolerate a lost price
+    if (!codes.length && price == null && t.strong.length < 2) continue;
+    out.push({ raw, tokens: t.strong, weak: t.weak, codes, price, qty: receiptQty(raw),
+      skiplike });
+    if (out.length >= 60) break;
+  }
+  return out;
+}
+
+/* token-vs-name score; null = not good enough. Exact word 3, prefix (≥3 chars,
+   either direction — covers plurals and receipt truncation) 2. Accept on two
+   matched tokens, or an exact hit for a single-token line. */
+function receiptNameScore(tokens, weak, pr) {
+  const words = pr.rw || [];
+  if (!words.length) return null;
+  let matched = 0, quality = 0;
+  for (const tk of tokens) {
+    let q = 0;
+    for (const w of words) {
+      if (w === tk) { q = 3; break; }
+      if (Math.min(w.length, tk.length) >= 3 && (w.startsWith(tk) || tk.startsWith(w)))
+        q = Math.max(q, 2);
+    }
+    if (q) matched++;
+    quality += q;
+  }
+  if (!matched) return null;
+  if (!(matched >= 2 || (tokens.length === 1 && quality >= 3))) return null;
+  for (const tk of weak) if ((pr.rwWeak || []).includes(tk)) quality += 1;
+  return { score: quality + matched / tokens.length + matched / words.length, matched };
+}
+function receiptMatchLine(tokens, weak) {
+  const cand = new Set();
+  for (const tk of tokens) {
+    for (const i of rcptIndex.words.get(tk) || []) cand.add(i);
+    if (tk.length >= 3) for (const i of rcptIndex.pre3.get(tk.slice(0, 3)) || []) cand.add(i);
+  }
+  let best = null;
+  for (const i of cand) {
+    const pr = state.products[i];
+    const s = receiptNameScore(tokens, weak, pr);
+    if (!s) continue;
+    if (!best || s.score > best.score ||
+        (s.score === best.score && (avail(pr) > avail(best.pr) ||
+          (avail(pr) === avail(best.pr) && pr.n.length < best.pr.n.length)))) {
+      best = { pr, score: s.score };
+    }
+  }
+  return best;
+}
+
+/* full text → review items; code match beats name match, duplicates merge */
+function matchReceiptText(text) {
+  ensureReceiptIndex();
+  const items = [], byK = new Map();
+  for (const ln of parseReceiptText(text)) {
+    let pr = null, via = null, price = ln.price;
+    for (const cand of ln.codes) {
+      const i = rcptIndex.codes.get(cand.c);
+      if (i != null) {
+        pr = state.products[i]; via = 'code';
+        // the code column often merges into the price in the OCR — reparse the
+        // price with the matched digits cut out (loose: decimal may be lost)
+        price = receiptPriceFrom(ln.raw.split(cand.orig).join(' '), true);
+        break;
+      }
+    }
+    if (!pr && ln.skiplike) continue;      // admin line whose number resolved nowhere
+    if (!pr && ln.tokens.length) {
+      const m = receiptMatchLine(ln.tokens, ln.weak);
+      if (m) { pr = m.pr; via = 'name'; }
+    }
+    if (pr && byK.has(pr.k)) {
+      const first = byK.get(pr.k);
+      first.qty = Math.min(99, first.qty + ln.qty);
+      continue;
+    }
+    const item = { raw: ln.raw, price, qty: ln.qty, pr, via, on: !!pr };
+    if (pr) byK.set(pr.k, item);
+    items.push(item);
+  }
+  return items;
+}
+
+/* ---- OCR engine (lazy, cached) ---- */
+let tessLoad = null, tessWorker = null;
+function receiptSetProgress(text, pct) {
+  state.receipt.statusText = text;
+  state.receipt.progress = pct;
+  const fill = $('#rcptFill'), st = $('#rcptStatus');
+  if (fill) fill.style.width = Math.round(pct * 100) + '%';
+  if (st) st.textContent = text;
+}
+function receiptLogger(m) {
+  if (state.receipt.stage !== 'working' || !m) return;
+  if (m.status === 'loading tesseract core' || m.status === 'initializing tesseract')
+    receiptSetProgress('טוען את מנוע הזיהוי (פעם ראשונה בלבד)…', 0.05 + (m.progress || 0) * 0.1);
+  else if (m.status === 'loading language traineddata')
+    receiptSetProgress('מוריד מודל זיהוי עברית — נשמר במכשיר להמשך…', 0.15 + (m.progress || 0) * 0.15);
+  else if (m.status === 'recognizing text')
+    receiptSetProgress('קורא את שורות הקבלה…', 0.35 + (m.progress || 0) * 0.6);
+}
+async function getTesseractWorker() {
+  if (!tessLoad) tessLoad = loadScript(TESSERACT_JS_URL);
+  try { await tessLoad; } catch (err) { tessLoad = null; throw err; }
+  if (!tessWorker) {
+    // heb+eng: the eng model carries the digit shapes — receipts are mostly
+    // digits (מק"ט, prices) and heb alone garbles them
+    const worker = await Tesseract.createWorker('heb+eng', 1, { logger: receiptLogger });
+    await worker.setParameters({
+      tessedit_pageseg_mode: '4',        // single column of variable-size lines = a receipt
+      preserve_interword_spaces: '1',
+    });
+    tessWorker = worker;
+  }
+  return tessWorker;
+}
+
+/* downscale + grayscale + percentile contrast stretch — thermal prints are
+   low-contrast and phone photos are huge; Tesseract likes ~1400px-wide gray */
+async function receiptPrepImage(file) {
+  let src, w, h;
+  try {
+    src = await createImageBitmap(file, { imageOrientation: 'from-image' });
+    w = src.width; h = src.height;
+  } catch (_) {
+    src = await new Promise((resolve, reject) => {
+      const img = new Image();
+      img.onload = () => resolve(img);
+      img.onerror = () => reject(new Error('image load failed'));
+      img.src = state.receipt.imgUrl;
+    });
+    w = src.naturalWidth; h = src.naturalHeight;
+  }
+  if (!w || !h) throw new Error('empty image');
+  const scale = Math.max(0.15, Math.min(1400 / w, 4200 / h, 3));
+  const cw = Math.round(w * scale), ch = Math.round(h * scale);
+  const canvas = document.createElement('canvas');
+  canvas.width = cw; canvas.height = ch;
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
+  ctx.imageSmoothingQuality = 'high';
+  ctx.drawImage(src, 0, 0, cw, ch);
+  const im = ctx.getImageData(0, 0, cw, ch), d = im.data;
+  const hist = new Uint32Array(256);
+  for (let i = 0; i < d.length; i += 4) {
+    const y = (d[i] * 299 + d[i + 1] * 587 + d[i + 2] * 114) / 1000 | 0;
+    d[i] = y; hist[y]++;
+  }
+  const total = cw * ch;
+  let lo = 0, hi = 255, acc = 0;
+  for (let v = 0; v < 256; v++) { acc += hist[v]; if (acc >= total * 0.05) { lo = v; break; } }
+  acc = 0;
+  for (let v = 255; v >= 0; v--) { acc += hist[v]; if (acc >= total * 0.05) { hi = v; break; } }
+  const span = Math.max(1, hi - lo);
+  for (let i = 0; i < d.length; i += 4) {
+    const y = Math.max(0, Math.min(255, (d[i] - lo) * 255 / span | 0));
+    d[i] = d[i + 1] = d[i + 2] = y;
+  }
+  ctx.putImageData(im, 0, 0);
+  return canvas;
+}
+
+async function startReceiptScan(file) {
+  const r = state.receipt;
+  if (!file || !file.type.startsWith('image/') || r.stage === 'working') return;
+  if (state.status !== 'live') { toast('המחירים עוד נטענים — נסו שוב בעוד רגע'); return; }
+  if (r.imgUrl) URL.revokeObjectURL(r.imgUrl);
+  Object.assign(r, { stage: 'working', progress: 0, statusText: '', error: '', items: [],
+    imgUrl: URL.createObjectURL(file) });
+  render();
+  receiptSetProgress('מכין את התמונה…', 0.02);
+  try {
+    const canvas = await receiptPrepImage(file);
+    const worker = await getTesseractWorker();
+    const { data } = await worker.recognize(canvas);
+    receiptSetProgress('מצליב מול קטלוג המחירים…', 0.97);
+    r.items = matchReceiptText(data.text || '');
+    r.stage = 'review';
+  } catch (err) {
+    console.warn('receipt scan failed:', err);
+    r.stage = 'error';
+    r.error = navigator.onLine === false
+      ? 'אין חיבור לאינטרנט — מנוע הזיהוי נטען מהרשת פעם אחת לפני שימוש ראשון.'
+      : 'זיהוי הקבלה לא הצליח. נסו שוב עם תמונה חדה, ישרה ומוארת.';
+  }
+  render();
+}
+
+function resetReceipt() {
+  const r = state.receipt;
+  if (r.imgUrl) URL.revokeObjectURL(r.imgUrl);
+  Object.assign(r, { stage: 'idle', progress: 0, statusText: '', imgUrl: '', items: [], error: '' });
+}
+
+function commitReceipt() {
+  const r = state.receipt;
+  let added = 0;
+  for (const it of r.items) {
+    if (!it.on || !it.pr) continue;
+    state.list.set(it.pr.k, Math.min(99, (state.list.get(it.pr.k) || 0) + it.qty));
+    added++;
+  }
+  if (!added) { toast('לא סומנו מוצרים להוספה'); return; }
+  persistList();
+  state.note = `נוספו ${added} מוצרים מסריקת הקבלה 📸 — בדקו את הרשימה והמשיכו להשוואה.`;
+  state.visited = true; persistPrefs();
+  resetReceipt();
+  nav('#/build');
+}
+
+function receiptH() {
+  const r = state.receipt;
+  const tips = `<aside class="bld-side">
+      <div class="side-card tinted">
+        <h4>ככה הזיהוי הכי מדויק</h4>
+        <ul class="rcpt-tips">
+          <li>מיישרים את הקבלה על משטח חלק</li>
+          <li>אור מלא, בלי צל על הנייר</li>
+          <li>מצלמים מקרוב, שהאותיות חדות</li>
+          <li>קבלה ארוכה? אפשר לסרוק בחלקים</li>
+        </ul>
+      </div>
+      <div class="side-card elevated">
+        <h4>🔒 בלי לשלוח לשום מקום</h4>
+        <p class="muted sm">הזיהוי רץ כולו בדפדפן שלכם, במכשיר — תמונת הקבלה לא נשלחת לשום שרת.
+        בשימוש הראשון יורד מודל זיהוי (כ־7MB) ונשמר במכשיר לפעמים הבאות.</p>
+      </div>
+    </aside>`;
+  let main;
+  if (r.stage === 'idle' || r.stage === 'error') {
+    main = `
+      ${r.stage === 'error' ? `<div class="rcpt-error">⚠ ${esc(r.error)}</div>` : ''}
+      <button class="rcpt-drop" data-action="rcpt-pick" id="rcptDrop">
+        <span class="rcpt-icon">📸</span>
+        <b>צילום או העלאה של תמונת קבלה</b>
+        <span class="muted">לחיצה כאן — או גרירת תמונה לתוך המסגרת</span>
+      </button>
+      <input id="rcptFile" type="file" accept="image/*" hidden>`;
+  } else if (r.stage === 'working') {
+    main = `
+      <div class="rcpt-work">
+        <img class="rcpt-img" src="${r.imgUrl}" alt="תמונת הקבלה שנסרקת">
+        <div class="rcpt-progress">
+          <div class="rcpt-bar"><div class="rcpt-bar-fill" id="rcptFill" style="width:${Math.round(r.progress * 100)}%"></div></div>
+          <div class="muted" id="rcptStatus">${esc(r.statusText || 'מתחילים…')}</div>
+        </div>
+      </div>`;
+  } else {
+    const hits = r.items.filter(it => it.pr);
+    const misses = r.items.filter(it => !it.pr);
+    const onCount = hits.filter(it => it.on).length;
+    const rows = hits.map(it => {
+      const idx = r.items.indexOf(it);
+      return `<div class="item-row rcpt-row${it.on ? '' : ' off'}">
+        <button class="sel-round${it.on ? ' on' : ''}" data-action="rcpt-toggle" data-idx="${idx}"
+          aria-label="${it.on ? 'הסרה מהרשימה' : 'הוספה לרשימה'}">${it.on ? '✓' : '+'}</button>
+        ${productVisual(it.pr)}
+        <div class="item-main">
+          <span class="item-name">${esc(it.pr.n)}
+            ${it.via === 'code' ? '<span class="tag rcpt-code-tag" title="הותאם לפי המק&quot;ט שמודפס בקבלה">🎯 לפי מק״ט</span>' : ''}</span>
+          <span class="item-meta rcpt-raw" dir="rtl">בקבלה: „${esc(it.raw.slice(0, 60))}“${it.price != null ? ` · ${money(it.price)}` : ''}</span>
+        </div>
+        <div class="stepper">
+          <button data-action="rcpt-dec" data-idx="${idx}" aria-label="הפחתה">−</button>
+          <span>${it.qty}</span>
+          <button data-action="rcpt-inc" data-idx="${idx}" aria-label="הוספה">+</button>
+        </div>
+        <div class="item-from">${esc(fromLabel(it.pr))}</div>
+      </div>`;
+    }).join('');
+    const missH = misses.length ? `
+      <div class="side-card tinted rcpt-miss">
+        <h4>שורות שלא זוהו (${misses.length})</h4>
+        <p class="muted sm">אפשר לחפש אותן ידנית בקטלוג — לוחצים ועוברים לחיפוש עם הטקסט מהקבלה.</p>
+        ${misses.map(it => `<div class="rcpt-miss-row">
+          <span class="rcpt-raw" dir="rtl">„${esc(it.raw.slice(0, 60))}“</span>
+          <button class="btn-outline sm" data-action="rcpt-manual"
+            data-q="${esc(it.raw.replace(/[^א-ת\s%0-9]/g, ' ').replace(/\s+/g, ' ').trim().split(' ').slice(0, 3).join(' '))}">חיפוש ידני</button>
+        </div>`).join('')}
+      </div>` : '';
+    main = hits.length ? `
+      <div class="card rcpt-review">
+        <div class="list-head"><h3>זיהינו ${hits.length} מוצרים</h3>
+          <span class="muted">מתוך ${r.items.length} שורות בקבלה · סמנו מה להוסיף</span></div>
+        ${rows}
+      </div>
+      ${missH}
+      <div class="rcpt-ctas">
+        <button class="btn-primary lg" data-action="rcpt-commit">הוספת ${onCount} מוצרים לרשימה</button>
+        <button class="btn-outline" data-action="rcpt-reset">סריקת קבלה נוספת</button>
+      </div>` : `
+      <div class="card empty-cta">
+        <h2>לא הצלחנו לזהות מוצרים בקבלה</h2>
+        <p class="muted">נסו תמונה חדה וישרה יותר, באור מלא — או חפשו את המוצרים ידנית.</p>
+        <div class="rcpt-ctas center">
+          <button class="btn-primary" data-action="rcpt-reset">ניסיון נוסף</button>
+          <button class="btn-outline" data-action="go-build">לחיפוש ידני</button>
+        </div>
+      </div>
+      ${missH}`;
+  }
+  return `<div class="wrap page">
+    <a class="back-link" href="#/build">← חזרה לרשימה</a>
+    <h2 class="page-title">סריקת קבלה 📸</h2>
+    <p class="page-sub">מצלמים קבלה מקנייה קודמת — אנחנו מזהים את המוצרים לפי המק״ט והשם,
+      ובונים מהם רשימה עם מחירי היום בכל הרשתות.</p>
+    <div class="rcpt-grid">
+      <div>${main}</div>
+      ${tips}
+    </div>
+  </div>`;
+}
+
 /* ---------- router ---------- */
 const APP_SCREENS = new Set(['build', 'results', 'basket', 'done', 'saved', 'profile',
-  'terms', 'accessibility']);
+  'receipt', 'terms', 'accessibility']);
 function nav(hash) { location.hash = hash; }
 function route() {
   // split BEFORE decoding — chain labels may contain an encoded slash (%2F)
@@ -971,6 +1421,8 @@ function onboardingH() {
           <button class="btn-primary lg" data-action="go-build">בניית הרשימה שלי</button>
           <button class="btn-outline" data-action="go-setup">${state.auth.mode === 'firebase' ? 'התחברות / הרשמה' : 'הגדרת פרופיל'}</button>
         </div>
+        <button class="rcpt-cta" data-action="go-receipt">📸 <b>יש קבלה מהסופר?</b>
+          סרקו אותה — ונבנה לכם את הרשימה אוטומטית</button>
       </div>
     </div>
     <div class="ob-side">
@@ -1199,6 +1651,8 @@ function buildH() {
             placeholder="חיפוש לפי שם, ברקוד או מק&quot;ט — חלב, 7290…">
           <div id="suggestBox" class="suggest" hidden></div>
         </div>
+        <button class="rcpt-cta" data-action="go-receipt">📸 <b>יש קבלה מקנייה קודמת?</b>
+          סרקו אותה ונמלא את הרשימה בשבילכם</button>
         <div class="pop-block">
           ${catChips}
           <div class="block-kicker">${esc(gridTitle)}</div>
@@ -1696,7 +2150,10 @@ function termsH() {
       אושר עד, חצי חינם). השלמת כתובות: © <a href="https://www.openstreetmap.org/copyright"
       target="_blank" rel="noopener">OpenStreetMap</a> contributors (שירות Photon).
       תמונות מוצרים (בקירוב, לפי ברקוד): <a href="https://world.openfoodfacts.org/"
-      target="_blank" rel="noopener">Open Food Facts</a>.</p>
+      target="_blank" rel="noopener">Open Food Facts</a>.
+      זיהוי טקסט בסריקת קבלות: מנוע הקוד הפתוח
+      <a href="https://github.com/tesseract-ocr/tesseract" target="_blank" rel="noopener">Tesseract</a>,
+      הפועל כולו בדפדפן המשתמש.</p>
       <h4>6. פרטיות ומאגר מידע</h4>
       <p>במסגרת השימוש באתר נאספים ונשמרים פרטים שהמשתמש מוסר — ובהם שם, פרטי
       התקשרות, כתובת למשלוח ורשימות הקניות — וכן נתוני שימוש הנדרשים לתפעול השירות.
@@ -1708,7 +2165,9 @@ function termsH() {
       תיקונו או מחיקתו בפנייה לדוא"ל
       <a href="mailto:segolen.holdings@gmail.com">segolen.holdings@gmail.com</a>.
       חיפוש כתובת ותמונות מוצרים כרוכים בפנייה לשירותים חיצוניים (OpenStreetMap /
-      Open Food Facts) בהתאם לתנאי אותם שירותים. תוסף הדפדפן של ליםSlim שומר את
+      Open Food Facts) בהתאם לתנאי אותם שירותים.
+      סריקת קבלות מתבצעת כולה במכשיר המשתמש: תמונת הקבלה מעובדת בדפדפן בלבד,
+      אינה נשלחת לשרת כלשהו ואינה נשמרת על ידי החברה. תוסף הדפדפן של ליםSlim שומר את
       רשימת ההעברה באחסון המקומי של הדפדפן בלבד, אינו אוסף מידע אישי, אינו ניגש
       לסיסמאות ואינו שולח נתונים לשום שרת.</p>
       <h4>7. שינויים ודין חל</h4>
@@ -1832,6 +2291,7 @@ function render() {
     case 'done': body = doneH(); break;
     case 'saved': body = savedH(); break;
     case 'profile': body = profileH(); break;
+    case 'receipt': body = receiptH(); break;
     case 'terms': body = termsH(); break;
     case 'accessibility': body = accessibilityH(); break;
     default: body = buildH();
@@ -1851,6 +2311,26 @@ function bindScreen() {
       timer = setTimeout(() => renderSuggest(si.value), 120);
     });
     si.addEventListener('keydown', e => { if (e.key === 'Escape') hideSuggest(); });
+    if (state.pendingSearch) {                 // receipt "חיפוש ידני" hand-off
+      si.value = state.pendingSearch;
+      state.pendingSearch = '';
+      si.focus();
+      renderSuggest(si.value);
+    }
+  }
+  const rf = $('#rcptFile');
+  if (rf) {
+    rf.addEventListener('change', () => startReceiptScan(rf.files && rf.files[0]));
+    const drop = $('#rcptDrop');
+    if (drop) {
+      drop.addEventListener('dragover', e => { e.preventDefault(); drop.classList.add('drag'); });
+      drop.addEventListener('dragleave', () => drop.classList.remove('drag'));
+      drop.addEventListener('drop', e => {
+        e.preventDefault();
+        drop.classList.remove('drag');
+        startReceiptScan(e.dataTransfer.files && e.dataTransfer.files[0]);
+      });
+    }
   }
   for (const sel of ['#obAddress', '#pAddress', '#fAddress']) {
     const el = $(sel);
@@ -1990,6 +2470,28 @@ document.addEventListener('click', e => {
   switch (a) {
     case 'reload': loadData(); render(); break;
     case 'go-build': state.visited = true; persistPrefs(); nav('#/build'); break;
+    case 'go-receipt': state.visited = true; persistPrefs(); nav('#/receipt'); break;
+    case 'rcpt-pick': { const rf = $('#rcptFile'); if (rf) rf.click(); break; }
+    case 'rcpt-toggle': {
+      const it = state.receipt.items[+btn.dataset.idx];
+      if (it) { it.on = !it.on; render(); }
+      break;
+    }
+    case 'rcpt-inc': case 'rcpt-dec': {
+      const it = state.receipt.items[+btn.dataset.idx];
+      if (it) {
+        it.qty = Math.max(1, Math.min(99, it.qty + (a === 'rcpt-inc' ? 1 : -1)));
+        render();
+      }
+      break;
+    }
+    case 'rcpt-commit': commitReceipt(); break;
+    case 'rcpt-reset': resetReceipt(); render(); break;
+    case 'rcpt-manual':
+      state.pendingSearch = btn.dataset.q || '';
+      resetReceipt();
+      nav('#/build');
+      break;
     case 'go-setup': nav('#/setup'); break;
     case 'go-results': nav('#/results'); break;
     case 'go-saved': nav('#/saved'); break;

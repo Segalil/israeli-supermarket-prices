@@ -83,6 +83,23 @@ Downloading is done via the il-supermarket-scraper library (PyPI).
     computes the next typical 4h window (no Shabbat) from CHAIN_META.speed;
   * merged products keep aliases → byKey maps alias keys too, so saved lists
     survive consolidation.
+  * receipt scan (#/receipt, entry CTAs on onboarding + build): photo → OCR →
+    review → add-to-list, at zero running cost — OCR runs fully client-side via
+    tesseract.js (pinned 5.1.1, lazy jsDelivr load, 'heb+eng' because heb
+    alone garbles digits; models cached in IndexedDB, photo never uploaded).
+    Matching is CODE-FIRST: receipts print each item's מק"ט/barcode and digits
+    OCR reliably — 7-13 digit runs (plus 13/12-digit edges of longer runs,
+    because the price column merges into the code in OCR) are exact-matched
+    against a lazy inverted index (rcptIndex, rebuilt per data load); only
+    codeless lines fall back to Hebrew token matching (final letters
+    normalized, exact-word > prefix, weak number tokens break ties, ≥2 token
+    hits or exact single-token). Admin lines (totals/payment/header) are
+    dropped by keyword UNLESS a code resolves; all-numeric "2 X 6.90" lines
+    set the qty of the line above (OCR may reverse them and read X as א).
+    Tests: tests/test_receipt_scan.py replays a real captured OCR text
+    (samples/receipt-scan/) through site/app.js in node via
+    tests/receipt_harness.js; samples/receipt-scan/make_receipt.py regenerates
+    the synthetic receipt PNG for manual browser testing.
   * auth: FIREBASE_CONFIG=null → device-profile mode; paste a Firebase web
     config to enable real login/signup (email+password + Google popup +
     password reset) with per-user Firestore sync — SYNC_KEYS localStorage
@@ -126,6 +143,8 @@ Downloading is done via the il-supermarket-scraper library (PyPI).
 #   python build_price_db.py
 
 ## Roadmap / ideas to build next
+0. ~~Receipt-photo onboarding~~ — done: #/receipt scans a receipt photo into
+   the list (client-side Tesseract OCR, מק"ט-first matching, review screen).
 1. ~~Promotions~~ — done end-to-end (PromoFull parsing, daily promos snapshot,
    promo-aware totals + badges in the site).
 2. Smarter online-store detection: יוחננוף and אושר עד still fall back to a
