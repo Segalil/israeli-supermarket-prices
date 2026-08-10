@@ -522,6 +522,12 @@ html.a11y-noanim *, html.a11y-noanim *::before, html.a11y-noanim *::after {
   padding-top: 14px; border-top: 1px solid var(--divider-strong); margin-bottom: 18px; font-weight: 700;
 }
 .co-total-num { font-family: var(--font-display); font-size: 30px; }
+.instore-guide {
+  background: var(--brand-tint); border-radius: var(--radius-sm);
+  padding: 12px 16px; font-size: 13px; margin-bottom: 14px; color: var(--brand-ink);
+}
+.instore-guide ol { margin: 8px 0 0; padding-inline-start: 18px; }
+.instore-guide li { margin: 5px 0; }
 
 /* ---------- done ---------- */
 .done { max-width: 640px; margin: 0 auto; padding: 110px 40px; text-align: center; }

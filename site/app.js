@@ -59,7 +59,8 @@ const CHAIN_META = {
       'רמלה', 'מודיעין', 'יבנה', 'חולון', 'בת ים', 'רמת גן', 'גדרה', 'עפולה'],
     home: 'https://yochananof.co.il/',
     search: q => `https://yochananof.co.il/search?q=${encodeURIComponent(q)}`, barcode: true },
-  'אושר עד': { initial: 'א', fee: 35, min: 300, speed: 3,
+  'אושר עד': { initial: 'א', noOnline: true,           // no online store exists
+    branches: 'https://osherad.co.il/stores/', fee: 35, min: 300, speed: 3,
     delivery: ['ירושלים', 'בית שמש', 'ביתר עילית', 'מודיעין עילית', 'בני ברק',
       'אלעד', 'אשדוד', 'פתח תקווה', 'חיפה', 'רכסים', 'טבריה', 'צפת', 'נתיבות'],
     home: 'https://www.osherad.co.il/' },
@@ -703,13 +704,13 @@ function computeRows() {
       sub += cost;
       promoSaved += base * qty - cost;
     }
-    const total = sub + m.fee;
+    const total = sub + (m.noOnline ? 0 : m.fee);
     const delivery = deliveryStatus(label);
     const penalty = (state.priority === 'fast' ? m.speed * 22
       : state.priority === 'balanced' ? m.speed * 8 + missing.length * 6
         : missing.length * 12) + (delivery === 'no' ? 500 : 0);
     return { label, m, sub, missing, total, promoSaved, delivery,
-             belowMin: sub > 0 && sub < m.min, score: total + penalty };
+             belowMin: !m.noOnline && sub > 0 && sub < m.min, score: total + penalty };
   });
   rows.sort((a, b) => a.score - b.score);
   const dearest = rows.length ? rows.reduce((a, b) => (a.total > b.total ? a : b)) : null;
@@ -1045,6 +1046,28 @@ function startCarouselAuto() {
 }
 
 const CATEGORY_ORDER = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 0];   // display order, "אחר" last
+
+/* in-store walk order (typical supermarket layout) + department emoji,
+   used for the printable list of chains without an online store */
+const WALK_ORDER = [1, 4, 3, 2, 8, 5, 6, 7, 9, 10, 0];
+const CAT_EMOJI = { 1: '🥬', 2: '🥛', 3: '🍗', 4: '🍞', 5: '🥫', 6: '🍫',
+  7: '🥤', 8: '🧊', 9: '🧻', 10: '🧴', 0: '🛒' };
+
+/* shopping list grouped by department, checkbox-style for in-store use */
+function inStoreListText(label, items, total) {
+  const rows = [`רשימת קניות לסניף ${label} (ליםSlim · נתוני ${state.date})`, ''];
+  for (const ci of WALK_ORDER) {
+    const inCat = items.filter(({ pr }) => (pr.c || 0) === ci);
+    if (!inCat.length) continue;
+    rows.push(`${CAT_EMOJI[ci] || ''} ${state.categories[ci] || ''}`);
+    for (const { pr, qty } of inCat) {
+      rows.push(`□ ${pr.n}${qty > 1 ? ` — ${qty} יח׳` : ''}`);
+    }
+    rows.push('');
+  }
+  rows.push(`סה״כ משוער לפי מחירי ${label}: ${ils0(total)}`);
+  return rows.join('\n');
+}
 function popTileH(pr) {
   return `
     <div class="pop-tile">
@@ -1167,18 +1190,21 @@ function resultsH() {
     body = `<div class="res-list">` + t.rows.map(r => {
       const barW = t.dearest ? Math.round((r.total / t.dearest.total) * 100) : 100;
       const isBest = r === t.cheapest;
-      const slot = nextSlot(r.label);
+      const slot = r.m.noOnline ? '' : nextSlot(r.label);
       return `<div class="res-card${isBest ? ' best' : ''}">
         ${chainVisual(r.label)}
         <div class="res-main">
           <div class="res-name-row">
-            <span class="res-name">${esc(r.label)} אונליין</span>
+            <span class="res-name">${esc(r.label)}${r.m.noOnline ? '' : ' אונליין'}</span>
+            ${r.m.noOnline ? '<span class="tag min-tag">🏬 קנייה בסניף — אין אונליין</span>' : ''}
             ${isBest ? '<span class="tag best-tag">הכי משתלם</span>' : ''}
             ${r.missing.length ? `<span class="tag miss-tag" title="${esc(r.missing.map(p => p.n).join(', '))}">${r.missing.length === 1 ? 'מוצר אחד חסר' : r.missing.length + ' מוצרים חסרים'}</span>` : ''}
             ${r.belowMin ? `<span class="tag min-tag">מתחת למינימום ${ils0(r.m.min)}</span>` : ''}
             ${r.promoSaved > 0.005 ? `<span class="tag promo-tag">🏷 כולל מבצעים בשווי ${money(r.promoSaved)}</span>` : ''}
           </div>
-          <div class="res-meta">${slot ? `משלוח קרוב: ${slot} (הערכה) · ` : ''}דמי משלוח ${ils0(r.m.fee)} · מינימום ${ils0(r.m.min)}${deliveryLineH(r.label) ? ' · ' + deliveryLineH(r.label) : ''}</div>
+          <div class="res-meta">${r.m.noOnline
+            ? 'ללא דמי משלוח — רשימה מסודרת לפי מחלקות לקנייה בסניף'
+            : `${slot ? `משלוח קרוב: ${slot} (הערכה) · ` : ''}דמי משלוח ${ils0(r.m.fee)} · מינימום ${ils0(r.m.min)}${deliveryLineH(r.label) ? ' · ' + deliveryLineH(r.label) : ''}`}</div>
           ${(() => {
             const deals = dealSuggestions(r.label, t.items);
             if (!deals.length) return '';
@@ -1315,7 +1341,9 @@ function basketH() {
   return `<div class="wrap page">
     <a class="back-link" href="#/results">← חזרה להשוואה</a>
     <h2 class="page-title">הסל שלך ב${esc(label)}</h2>
-    <p class="page-sub">${lines.length} מתוך ${t.items.length} מוצרים נמצאו${slot ? ' · משלוח קרוב: ' + esc(slot) + ' (הערכה)' : ''}</p>
+    <p class="page-sub">${lines.length} מתוך ${t.items.length} מוצרים נמצאו${m.noOnline
+      ? ' · קנייה בסניף — אין חנות אונליין'
+      : (slot ? ' · משלוח קרוב: ' + esc(slot) + ' (הערכה)' : '')}</p>
     <div class="bsk-grid">
       <div>
         <div class="card">${linesH || '<div class="list-empty">אף מוצר מהרשימה לא נמצא ברשת זו.</div>'}</div>
@@ -1329,6 +1357,28 @@ function basketH() {
           ${subsH}</div>` : ''}
       </div>
       <aside class="side-card elevated checkout">
+      ${m.noOnline ? `
+        <div class="co-head">${chainVisual(label)}<span>${esc(label)} · קנייה בסניף</span></div>
+        <div class="co-rows">
+          <div class="co-row"><span class="muted">סל המוצרים (${lines.length})</span><b>${money(r.sub)}</b></div>
+          ${r.promoSaved > 0.005 ? `<div class="co-row promo"><span class="muted">🏷 כבר כולל מבצעים בשווי</span><b>${money(r.promoSaved)}</b></div>` : ''}
+          <div class="co-row"><span class="muted">דמי משלוח</span><b>אין — קנייה בסניף</b></div>
+        </div>
+        <div class="co-total"><span>לתשלום (משוער)</span><span class="co-total-num">${ils0(r.sub + acceptedTotal)}</span></div>
+        <div class="instore-guide">
+          <b>ל${esc(label)} אין חנות אונליין — כך עושים את זה הכי בקל:</b>
+          <ol>
+            <li>לחצו על הכפתור — הרשימה תסודר <b>לפי סדר המחלקות בסופר</b>
+              (ירקות ← מאפים ← בשר ← מוצרי חלב ← קפואים ← מזווה…) ותועתק לנייד.</li>
+            <li>שלחו אותה לעצמכם בוואטסאפ — נוחה לסימון ✓ תוך כדי קנייה.</li>
+            <li>בסניף: עגלת <b>אושר סמארט</b> סורקת את המוצרים תוך כדי הקנייה —
+              בלי תור בקופה.</li>
+            <li><a href="${esc(m.branches || m.home || '#')}" target="_blank" rel="noopener">מציאת הסניף הקרוב ↗</a></li>
+          </ol>
+        </div>
+        <button class="btn-primary block" data-action="handoff" data-chain="${esc(label)}">📋 הכנת רשימה לקנייה בסניף</button>
+        <p class="fine center">המחירים לפי מחירון ${esc(label)}; המחיר הסופי נקבע בקופה.</p>
+      ` : `
         <div class="co-head">${chainVisual(label)}<span>${esc(label)} אונליין</span></div>
         <div class="co-rows">
           <div class="co-row"><span class="muted">סל המוצרים (${lines.length})</span><b>${money(r.sub)}</b></div>
@@ -1344,6 +1394,7 @@ function basketH() {
         <p class="fine center">${hasExtension()
           ? 'התוסף יפתח את אתר הרשת וילווה אתכם בהוספת הפריטים לעגלה — בתוך החשבון שלכם. התשלום מתבצע מול הרשת.'
           : 'ההזמנה נבנית בעגלת האתר של הרשת — הרשימה תועתק ללוח והחנות תיפתח בלשונית חדשה. התשלום מתבצע מול הרשת.'}</p>
+      `}
       </aside>
     </div>
   </div>`;
@@ -1351,6 +1402,22 @@ function basketH() {
 
 function doneH() {
   const h = state.lastHandoff;
+  if (h.inStore) {
+    return `<div class="done">
+      <div class="done-circle">🏬</div>
+      <h2>הרשימה מוכנה לקנייה בסניף ${esc(h.label)}</h2>
+      <p class="page-sub">${h.count} מוצרים (${ils0(h.total)} משוער, ללא דמי משלוח) הועתקו ללוח —
+        מסודרים לפי סדר המחלקות בסופר, עם משבצת סימון ליד כל מוצר.
+        שלחו לעצמכם בוואטסאפ וסמנו תוך כדי קנייה; בסניף אפשר לסרוק עם עגלת
+        אושר סמארט ולדלג על התור בקופה.</p>
+      <div class="done-ctas">
+        <a class="btn-primary" href="https://wa.me/?text=${encodeURIComponent(h.text || '')}"
+          target="_blank" rel="noopener">📱 שליחה לוואטסאפ</a>
+        ${h.branches ? `<a class="btn-outline" href="${esc(h.branches)}" target="_blank" rel="noopener">📍 מציאת סניף</a>` : ''}
+        <button class="btn-outline" data-action="go-build">חזרה לרשימה</button>
+      </div>
+    </div>`;
+  }
   return `<div class="done">
     <div class="done-circle">✓</div>
     <h2>הרשימה מוכנה ל${esc(h.label)}</h2>
@@ -1782,6 +1849,22 @@ function doHandoff(label) {
   const subsAccepted = Object.entries(state.subs)
     .map(([mk, ak]) => state.byKey.get(ak)).filter(Boolean);
   const acceptedTotal = subsAccepted.reduce((s, pr) => s + (effPriceAt(pr, label) || 0), 0);
+  if (m.noOnline) {
+    // in-store chain: department-sorted checklist instead of an online cart
+    const inStoreItems = [...lines, ...subsAccepted.map(pr => ({ pr, qty: 1 }))];
+    const inStoreTotal = r.sub + acceptedTotal;
+    const text = inStoreListText(label, inStoreItems, inStoreTotal);
+    copyText(text);
+    state.orders.unshift({ store: label, date: state.date || new Date().toISOString().slice(0, 10),
+      count: inStoreItems.length, total: inStoreTotal,
+      items: inStoreItems.map(({ pr, qty }) => [pr.k, qty]) });
+    state.orders = state.orders.slice(0, 20);
+    saveLS(LS.orders, state.orders);
+    state.lastHandoff = { label, count: inStoreItems.length, total: inStoreTotal,
+      inStore: true, text, branches: m.branches || m.home };
+    nav('#/done/' + encodeURIComponent(label));
+    return;
+  }
   const total = r.sub + acceptedTotal + m.fee;
   const rows = [`רשימת קניות — ${label} אונליין (סלים · נתוני ${state.date})`, ''];
   let i = 1;
