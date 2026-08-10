@@ -23,7 +23,14 @@ const DATA_URL = 'data/products.json.gz';
    6. Authentication → Settings → Authorized domains → add slim-super.com
    Until then the site runs in device-profile mode (no password, this browser
    only). */
-const FIREBASE_CONFIG = null;
+const FIREBASE_CONFIG = {
+  apiKey: 'AIzaSyBzZQ5ePYqn7BLEC5QjkuRRn-zoPodNJKM',
+  authDomain: 'slim-super-82fc1.firebaseapp.com',
+  projectId: 'slim-super-82fc1',
+  storageBucket: 'slim-super-82fc1.firebasestorage.app',
+  messagingSenderId: '1048151548009',
+  appId: '1:1048151548009:web:879f7baf9bb672baaf02f8',
+};
 
 const LS = {
   list: 'slim-list-v2',
