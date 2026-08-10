@@ -2114,7 +2114,29 @@ document.addEventListener('click', e => {
     case 'auth-google': authGoogle(); break;
     case 'auth-reset': authReset(); break;
     case 'sign-out':
-      firebase.auth().signOut().then(() => { toast('התנתקת מהחשבון'); nav('#/build'); });
+      clearTimeout(cloudTimer);                  // never sync the cleared state
+      firebase.auth().signOut().then(() => {
+        state.auth.user = null;
+        for (const k of [LS.list, LS.profile, LS.saved, LS.orders, LS.stats]) {
+          localStorage.removeItem(k);
+        }
+        state.list = new Map();
+        state.profile = { name: '', email: '', phone: '' };
+        state.saved = [];
+        state.orders = [];
+        state.stats = { comparisons: 0, lastSaving: 0, potential: 0 };
+        state.address = '';
+        state.addressCity = '';
+        state.subs = {};
+        state.lastHandoff = null;
+        state.selectedLists = {};
+        state.visited = true;
+        persistPrefs();
+        lastComparisonSig = '';
+        toast('התנתקת מהחשבון — הנתונים האישיים נוקו מהמכשיר');
+        nav('#/build');
+        render();
+      });
       break;
     case 'reset-profile': {
       if (!confirm('למחוק את הפרופיל, הרשימות וההיסטוריה מהדפדפן?')) break;
