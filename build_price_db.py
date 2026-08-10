@@ -41,6 +41,7 @@ LEADING_CHAINS = {
     "YAYNO_BITAN_AND_CARREFOUR": "יינות ביתן / קרפור",
     "YOHANANOF": "יוחננוף",
     "OSHER_AD": "אושר עד",
+    "HAZI_HINAM": "חצי חינם",
 }
 
 DUMP_DIR = "dumps"

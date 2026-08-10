@@ -84,7 +84,8 @@ const CHAIN_META = {
   'חצי חינם': { initial: 'ח', fee: 35, min: 250, speed: 2,
     delivery: ['ראשון לציון', 'חולון', 'בת ים', 'תל אביב', 'רמת גן', 'פתח תקווה',
       'ראש העין', 'רחובות', 'נס ציונה', 'מודיעין', 'אשדוד', 'הוד השרון'],
-    home: 'https://shop.hazi-hinam.co.il/' },
+    home: 'https://shop.hazi-hinam.co.il/',
+    search: q => `https://shop.hazi-hinam.co.il/searchResults/${encodeURIComponent(q)}`, barcode: true },
 };
 const FALLBACK_META = { initial: '?', fee: 30, min: 200, speed: 2, delivery: 'nationwide' };
 
@@ -1675,7 +1676,7 @@ function termsH() {
       <p>נתוני המחירים והמבצעים: מיזם <a href="https://www.gov.il/he/pages/cpfta_prices_regulations"
       target="_blank" rel="noopener">שקיפות המחירים</a> של משרד הכלכלה והתעשייה, מתוך
       הקבצים שמפרסמות הרשתות (שופרסל, רמי לוי, ויקטורי, יינות ביתן / קרפור, יוחננוף,
-      אושר עד). השלמת כתובות: © <a href="https://www.openstreetmap.org/copyright"
+      אושר עד, חצי חינם). השלמת כתובות: © <a href="https://www.openstreetmap.org/copyright"
       target="_blank" rel="noopener">OpenStreetMap</a> contributors (שירות Photon).
       תמונות מוצרים (בקירוב, לפי ברקוד): <a href="https://world.openfoodfacts.org/"
       target="_blank" rel="noopener">Open Food Facts</a>.</p>

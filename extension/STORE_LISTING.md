@@ -29,7 +29,7 @@ Developer Dashboard → **New item** → העלאת `extension.zip` (נבנה ב
 • הכול בתוך החשבון שלכם: התוסף לא מבקש סיסמאות, לא מתחבר בשמכם
   ולא שולח מידע לשום שרת
 
-רשתות נתמכות: שופרסל, רמי לוי, ויקטורי, יינות ביתן / קרפור, יוחננוף.
+רשתות נתמכות: שופרסל, רמי לוי, ויקטורי, יינות ביתן / קרפור, יוחננוף, חצי חינם.
 
 האתר: https://slim-super.com/
 
@@ -49,7 +49,7 @@ session and under their control.
 - Host access `slim-super.com` (and `segalil.github.io`, the legacy address) —
   reads the transfer list the user created on the ליםSlim site.
 - Host access `shufersal.co.il`, `rami-levy.co.il`, `yochananof.co.il`,
-  `victoryonline.co.il`, `carrefour.co.il` — shows the transfer panel and
+  `victoryonline.co.il`, `carrefour.co.il`, `shop.hazi-hinam.co.il` — shows the transfer panel and
   performs the add-to-cart clicks the user requested on these supermarkets.
 
 **Data usage:** The extension does not collect, transmit, sell, or share any
