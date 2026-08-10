@@ -575,8 +575,15 @@ async function loadData() {
     state.date = data.date || '';
     state.chains = data.chains || [];
     state.categories = data.categories || [];
-    state.products = (data.products || []).map(([k, n, u, b, p, al, pm, c]) =>
-      ({ k, n, u, b, p, al, pm, c: c || 0, nLow: n.toLowerCase(), bLow: (b || '').toLowerCase() }));
+    state.products = (data.products || []).map(([k, n, u, b, p, al, pm, c]) => {
+      const codes = [];
+      for (const v of [k, ...(al || [])]) {
+        const m = String(v).match(/\d{3,}/);
+        if (m && !codes.includes(m[0])) codes.push(m[0]);
+      }
+      return { k, n, u, b, p, al, pm, c: c || 0, codes,
+        nLow: n.toLowerCase(), bLow: (b || '').toLowerCase() };
+    });
     state.byKey = new Map();
     for (const pr of state.products) {
       state.byKey.set(pr.k, pr);
@@ -1171,7 +1178,7 @@ function buildH() {
       <div>
         <div class="search-wrap">
           <input id="searchInput" class="input search" autocomplete="off" enterkeyhint="search"
-            placeholder="חיפוש מוצר — חלב, ביצים, אורז…">
+            placeholder="חיפוש לפי שם, ברקוד או מק&quot;ט — חלב, 7290…">
           <div id="suggestBox" class="suggest" hidden></div>
         </div>
         <div class="pop-block">
@@ -1853,24 +1860,30 @@ function renderSuggest(query) {
   if (!box) return;
   const q = query.trim().toLowerCase();
   if (q.length < 2) { hideSuggest(); return; }
+  const isCode = /^\d{3,}$/.test(q);
   const scored = [];
   for (const pr of state.products) {
-    let score;
-    if (pr.nLow.startsWith(q)) score = 0;
+    let score, codeHit = null;
+    if (isCode) {
+      codeHit = pr.codes.find(c => c === q) ||
+                pr.codes.find(c => c.startsWith(q));
+      if (codeHit) score = codeHit === q ? -1 : 1;
+      else if (pr.nLow.includes(q)) score = 2;
+      else continue;
+    } else if (pr.nLow.startsWith(q)) score = 0;
     else if (pr.nLow.includes(' ' + q)) score = 1;
     else if (pr.nLow.includes(q) || pr.bLow.includes(q)) score = 2;
-    else if (/^\d{3,}$/.test(q) && pr.k.startsWith(q)) score = 1;
     else continue;
-    scored.push([score, pr]);
+    scored.push([score, pr, codeHit]);
   }
   scored.sort((a, b) => a[0] - b[0] || avail(b[1]) - avail(a[1]) ||
     minActivePrice(a[1], true) - minActivePrice(b[1], true));
   const top = scored.slice(0, 8);
   if (!top.length) { box.innerHTML = '<div class="suggest-none">לא נמצאו מוצרים תואמים</div>'; box.hidden = false; return; }
-  box.innerHTML = top.map(([, pr]) => `
+  box.innerHTML = top.map(([, pr, codeHit]) => `
     <button class="suggest-row" data-action="add-search" data-key="${esc(pr.k)}">
       <span class="sug-main"><span class="sug-name">${esc(pr.n)}</span>
-      <span class="sug-sub">${esc([pr.c ? state.categories[pr.c] : '', pr.b, pr.u].filter(Boolean).join(' · ') || 'ללא פרטים')}</span></span>
+      <span class="sug-sub">${esc([codeHit ? 'מק"ט ' + codeHit : '', pr.c ? state.categories[pr.c] : '', pr.b, pr.u].filter(Boolean).join(' · ') || 'ללא פרטים')}</span></span>
       <span class="sug-from">${esc(fromLabel(pr))}</span>
     </button>`).join('');
   box.hidden = false;
