@@ -433,10 +433,15 @@ async function initAuth() {
     ]);
     firebase.initializeApp(FIREBASE_CONFIG);
     state.auth = { mode: 'firebase', user: null, ready: false };
+    firebase.auth().getRedirectResult().catch(err => {
+      state.authError = authErrHe(err);
+      render();
+    });
     firebase.auth().onAuthStateChanged(async u => {
       state.auth.user = u ? { uid: u.uid, email: u.email || '',
         name: u.displayName || '' } : null;
       state.auth.ready = true;
+      if (u && state.screen === 'setup') { state.visited = true; persistPrefs(); nav('#/build'); }
       if (u) {
         await cloudPull(u.uid);
         if (!state.profile.name && u.displayName) {
@@ -501,6 +506,9 @@ function authErrHe(err) {
     'auth/too-many-requests': 'יותר מדי ניסיונות — נסו שוב מאוחר יותר',
     'auth/popup-closed-by-user': 'חלון ההתחברות נסגר לפני שהסתיימה ההתחברות',
     'auth/network-request-failed': 'בעיית רשת — בדקו את החיבור ונסו שוב',
+    'auth/popup-blocked': 'הדפדפן חסם את חלון ההתחברות — מעבירים אתכם לדף ההתחברות של Google…',
+    'auth/operation-not-allowed': 'שיטת ההתחברות אינה מופעלת בפרויקט',
+    'auth/unauthorized-domain': 'הדומיין אינו מורשה להתחברות — יש להוסיפו ב-Firebase',
   };
   return map[code] || 'ההתחברות נכשלה — נסו שוב';
 }
@@ -536,13 +544,22 @@ async function authSubmit() {
 }
 async function authGoogle() {
   state.authError = ''; state.authBusy = true; render();
+  const provider = new firebase.auth.GoogleAuthProvider();
+  // mobile browsers (esp. iOS Safari) block popups — go straight to redirect
+  const mobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
   try {
-    await firebase.auth().signInWithPopup(new firebase.auth.GoogleAuthProvider());
+    if (mobile) { await firebase.auth().signInWithRedirect(provider); return; }
+    await firebase.auth().signInWithPopup(provider);
     state.visited = true; persistPrefs();
     state.authBusy = false;
     toast('התחברת עם Google ☁');
     nav('#/build');
   } catch (err) {
+    if (err && (err.code === 'auth/popup-blocked' ||
+                err.code === 'auth/operation-not-supported-in-this-environment')) {
+      try { await firebase.auth().signInWithRedirect(provider); return; }
+      catch (err2) { err = err2; }
+    }
     state.authError = authErrHe(err);
     state.authBusy = false; render();
   }
