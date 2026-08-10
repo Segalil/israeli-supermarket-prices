@@ -23,6 +23,10 @@ const DATA_URL = 'data/products.json.gz';
    6. Authentication → Settings → Authorized domains → add slim-super.com
    Until then the site runs in device-profile mode (no password, this browser
    only). */
+/* NOTE: this apiKey is a PUBLIC project identifier, not a secret (per
+   Firebase docs it cannot be hidden in a web app and grants no data access).
+   Data protection = Firestore Security Rules + Authorized domains + the
+   API-key website/API restrictions set in the Google Cloud console. */
 const FIREBASE_CONFIG = {
   apiKey: 'AIzaSyBzZQ5ePYqn7BLEC5QjkuRRn-zoPodNJKM',
   authDomain: 'slim-super-82fc1.firebaseapp.com',
