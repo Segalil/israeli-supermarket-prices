@@ -138,8 +138,27 @@ Downloading is done via the il-supermarket-scraper library (PyPI).
   Loads the gzipped JSON via DecompressionStream (magic-byte sniffing).
   Hebrew search matching: word-prefix with exact-word priority (see keywordScore)
   so "חלב" ≠ "סחלב"/"חלבה" — reuse it for any new keyword features.
-- tests/test_parser.py, tests/test_site_data.py — offline tests (fixtures in
-  samples/ + the checked-in snapshot in data/).
+  * headings: exactly ONE <h1> per screen (.page-title is the h1; screens without
+    one — done/profile/error/results-empty — promote their lead heading). Sections
+    are h2, in-card sub-blocks h3. The CSS matches BOTH the old and new tags
+    (.card h2, .card h3, .card h4 { … }) so a retag never changes the look —
+    keep that pattern if you move a heading level again.
+- site/articles/ — static Hebrew guide pages, the SEO surface of the project.
+  The app itself is hash-routed, so "#/build" and friends are NOT separate URLs
+  for crawlers; only real files rank. Each guide is site/articles/<slug>/index.html
+  (clean URL /articles/<slug>/), fully readable without JS, styled by
+  site/article.css on top of style.css tokens. Conventions, all enforced by
+  tests/test_seo.py: one h1, no skipped heading levels, live TOC anchors,
+  canonical == og:url == the real path, valid JSON-LD (Article + BreadcrumbList
+  + FAQPage; the hub uses CollectionPage + ItemList), and every /articles/ link
+  resolving to a file. site/robots.txt + site/sitemap.xml list them; ADD NEW
+  GUIDES TO BOTH. robots.txt must keep /data/ crawlable — Googlebot's renderer
+  honours robots.txt for subresources, so blocking it would make the crawler see
+  a broken app. Content rule: the guides never print an invented price, percentage
+  or statistic, and never crown a chain "the cheapest" — the delivery figures they
+  quote come from CHAIN_META and are labelled הערכה, matching the UI.
+- tests/test_parser.py, tests/test_site_data.py, tests/test_seo.py — offline tests
+  (fixtures in samples/ + the checked-in snapshot in data/).
 - .github/workflows/daily-prices.yml — daily run (cron 05:00 UTC = 08:00 Israel)
   that saves a compressed snapshot under data/israeli_prices_YYYY-MM-DD.csv.gz
   and pushes it back to the repo.

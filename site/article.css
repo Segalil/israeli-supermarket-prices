@@ -1,0 +1,89 @@
+/* סלים=Slim — article/guide pages. Static HTML, crawlable without JS.
+   Loads on top of style.css and reuses its tokens, fonts and RTL ground. */
+
+.art-topbar {
+  position: sticky; top: 0; z-index: 30;
+  display: flex; align-items: center; justify-content: space-between; gap: 18px;
+  padding: 13px 40px; background: var(--text);
+}
+.art-topbar .brand { display: flex; align-items: center; gap: 11px; text-decoration: none; }
+.art-topbar .brand-name { font-family: var(--font-display); font-size: 22px; color: var(--surface); }
+.art-topbar-cta {
+  border-radius: var(--pill); padding: 9px 20px; font-size: 14px; font-weight: 700;
+  background: var(--brand); color: var(--surface); text-decoration: none; white-space: nowrap;
+}
+.art-topbar-cta:hover { background: var(--brand-deep); color: var(--surface); }
+
+.art { max-width: 780px; margin: 0 auto; padding: 0 24px 90px; }
+.art-crumbs { font-size: 13px; color: var(--text-2); padding: 22px 0 8px; }
+.art-crumbs a { color: var(--text-2); }
+.art-crumbs a:hover { color: var(--brand-deep); }
+
+.art h1 { font-size: 40px; line-height: 1.15; margin: 8px 0 14px; }
+.art-lede { font-size: 19px; line-height: 1.6; color: var(--text-2); margin: 0 0 16px; }
+.art-meta { font-size: 13px; color: var(--text-3); margin: 0 0 26px; }
+.art h2 { font-size: 28px; line-height: 1.25; margin: 40px 0 12px; }
+.art h3 { font-size: 21px; line-height: 1.3; margin: 26px 0 8px; }
+.art p { margin: 0 0 14px; font-size: 16px; line-height: 1.75; }
+.art ul, .art ol { margin: 0 0 16px; padding-inline-start: 22px; }
+.art li { font-size: 16px; line-height: 1.7; margin-bottom: 7px; }
+.art strong { font-weight: 700; color: var(--text); }
+
+.art-toc {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius-sm); padding: 18px 22px; margin: 0 0 30px;
+}
+.art-toc h2 { font-size: 17px; margin: 0 0 8px; }
+.art-toc ol { margin: 0; padding-inline-start: 20px; }
+.art-toc li { font-size: 15px; margin-bottom: 4px; }
+
+.art-note {
+  background: var(--brand-tint); border-radius: var(--radius-sm);
+  padding: 18px 22px; margin: 22px 0;
+}
+.art-note h3 { margin-top: 0; }
+.art-note p:last-child { margin-bottom: 0; }
+
+.art-table-wrap { overflow-x: auto; margin: 20px 0; }
+.art table { border-collapse: collapse; width: 100%; min-width: 460px; font-size: 15px; }
+.art th, .art td { text-align: right; padding: 10px 12px; border-bottom: 1px solid var(--divider); }
+.art th { font-weight: 700; color: var(--text); border-bottom: 1px solid var(--divider-strong); white-space: nowrap; }
+.art tbody tr:last-child td { border-bottom: none; }
+
+.art-cta {
+  background: var(--surface); border: 1px solid var(--brand-line);
+  border-radius: var(--radius); padding: 26px 28px; margin: 34px 0; text-align: center;
+}
+.art-cta h2 { font-size: 24px; margin: 0 0 8px; }
+.art-cta p { color: var(--text-2); margin: 0 0 16px; }
+.art-cta .btn-primary { display: inline-block; text-decoration: none; }
+
+.art-more { max-width: 780px; margin: 0 auto; padding: 0 24px 70px; }
+.art-more h2 { font-size: 24px; margin: 0 0 16px; }
+.art-more-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px; }
+.art-card {
+  display: block; background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius-sm); padding: 18px 20px; text-decoration: none; color: var(--text);
+}
+.art-card:hover { border-color: var(--brand-line); color: var(--text); }
+.art-card b { display: block; font-family: var(--font-display); font-weight: 400; font-size: 18px; line-height: 1.3; margin-bottom: 6px; }
+.art-card span { font-size: 14px; color: var(--text-2); }
+
+.art-foot { border-top: 1px solid var(--divider); padding: 26px 24px 40px; text-align: center; }
+.art-foot p { font-size: 13px; color: var(--text-3); margin: 0 0 6px; }
+
+.art-hub-lede { max-width: 780px; margin: 0 auto; padding: 0 24px; }
+.art-hub-grid {
+  max-width: 780px; margin: 0 auto; padding: 8px 24px 70px;
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px;
+}
+
+@media (max-width: 700px) {
+  .art-topbar { padding: 10px 16px; gap: 10px; }
+  .art { padding: 0 18px 70px; }
+  .art h1 { font-size: 30px; }
+  .art h2 { font-size: 23px; margin-top: 32px; }
+  .art h3 { font-size: 19px; }
+  .art-lede { font-size: 17px; }
+  .art-more, .art-hub-lede, .art-hub-grid { padding-inline: 18px; }
+}

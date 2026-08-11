@@ -1253,7 +1253,7 @@ function receiptH() {
   const r = state.receipt;
   const tips = `<aside class="bld-side">
       <div class="side-card tinted">
-        <h4>ככה הזיהוי הכי מדויק</h4>
+        <h3>ככה הזיהוי הכי מדויק</h3>
         <ul class="rcpt-tips">
           <li>מיישרים את הקבלה על משטח חלק</li>
           <li>אור מלא, בלי צל על הנייר</li>
@@ -1262,7 +1262,7 @@ function receiptH() {
         </ul>
       </div>
       <div class="side-card elevated">
-        <h4>🔒 בלי לשלוח לשום מקום</h4>
+        <h3>🔒 בלי לשלוח לשום מקום</h3>
         <p class="muted sm">הזיהוי רץ כולו בדפדפן שלכם, במכשיר — תמונת הקבלה לא נשלחת לשום שרת.
         בשימוש הראשון יורד מודל זיהוי (כ־7MB) ונשמר במכשיר לפעמים הבאות.</p>
       </div>
@@ -1317,7 +1317,7 @@ function receiptH() {
     }).join('');
     const missH = misses.length ? `
       <div class="side-card tinted rcpt-miss">
-        <h4>שורות שלא זוהו (${misses.length})</h4>
+        <h2>שורות שלא זוהו (${misses.length})</h2>
         <p class="muted sm">בכל זאת מוצר? פתחו את החיפוש, דפדפו בהתאמות מהקטלוג וצרפו אותו לרשימה.</p>
         ${misses.map(it => {
           const idx = r.items.indexOf(it);
@@ -1333,7 +1333,7 @@ function receiptH() {
       </div>` : '';
     main = hits.length ? `
       <div class="card rcpt-review">
-        <div class="list-head"><h3>זיהינו ${hits.length} מוצרים</h3>
+        <div class="list-head"><h2>זיהינו ${hits.length} מוצרים</h2>
           <span class="muted">מתוך ${r.items.length} שורות בקבלה · סמנו מה להוסיף</span></div>
         ${rows}
       </div>
@@ -1358,7 +1358,7 @@ function receiptH() {
   }
   return `<div class="wrap page">
     <a class="back-link" href="#/build">← חזרה לרשימה</a>
-    <h2 class="page-title">סריקת קבלה 📸</h2>
+    <h1 class="page-title">סריקת קבלה 📸</h1>
     <p class="page-sub">מצלמים קבלה מקנייה קודמת — אנחנו מזהים את המוצרים לפי המק״ט והשם,
       ובונים מהם רשימה עם מחירי היום בכל הרשתות.</p>
     ${noteH()}
@@ -1707,7 +1707,7 @@ function recipeH() {
       </div>`).join('');
     main = `
       <div class="card rcpt-review">
-        <div class="list-head"><h3>${esc(r.name || 'המתכון')}</h3>
+        <div class="list-head"><h2>${esc(r.name || 'המתכון')}</h2>
           <span class="muted">נבחרו ${chosen} מתוך ${r.ingredients.length} מצרכים${have ? ` · ${have} יש בבית` : ''}</span></div>
         <p class="muted sm">לכל מצרך מוצגות התאמות מהקטלוג — בחרו את המוצר המדויק שאתם קונים
           (איזה קמח, איזה מותג). אפשר לחפש אחרת בכל שורה.</p>
@@ -1725,7 +1725,7 @@ function recipeH() {
     main = `
       ${r.error ? `<div class="rcpt-error">⚠ ${esc(r.error)}</div>` : ''}
       <div class="card rcp-input-card">
-        <h3>🔗 קישור למתכון</h3>
+        <h2>🔗 קישור למתכון</h2>
         <p class="muted sm">הדביקו קישור לעמוד מתכון (10 דקות, פודי, מאקו ועוד) — נחלץ את
           רשימת המצרכים, ואתם בוחרים את המוצר המדויק לכל מצרך.</p>
         <div class="rcp-url-row">
@@ -1743,7 +1743,7 @@ function recipeH() {
   }
   const aside = `<aside class="bld-side">
       <div class="side-card tinted">
-        <h4>איך זה עובד?</h4>
+        <h3>איך זה עובד?</h3>
         <ol class="rcp-steps">
           <li>מדביקים קישור למתכון (או את המצרכים כטקסט)</li>
           <li>אנחנו מחלצים את רשימת המצרכים</li>
@@ -1752,7 +1752,7 @@ function recipeH() {
         </ol>
       </div>
       <div class="side-card elevated">
-        <h4>🔒 שקיפות</h4>
+        <h3>🔒 שקיפות</h3>
         <p class="muted sm">החילוץ והבחירה קורים בדפדפן שלכם. שליפת דף המתכון נעשית ישירות,
         ואם האתר חוסם — דרך שירותי תיווך (proxy) ציבוריים חינמיים; מועברת אליהם כתובת
         הקישור בלבד. תמיד אפשר להדביק את המצרכים כטקסט במקום.</p>
@@ -1760,7 +1760,7 @@ function recipeH() {
     </aside>`;
   return `<div class="wrap page">
     <a class="back-link" href="#/build">← חזרה לרשימה</a>
-    <h2 class="page-title">מתכון לרשימת קניות 🔗</h2>
+    <h1 class="page-title">מתכון לרשימת קניות 🔗</h1>
     <p class="page-sub">מקישור של מתכון לרשימת מוצרים אמיתית — אתם מחליטים איזה מוצר בדיוק
       נכנס לסל, לכל מצרך.</p>
     ${noteH()}
@@ -1840,6 +1840,13 @@ function navH() {
 }
 function footH() {
   return `<footer class="foot">
+    <nav class="foot-guides" aria-label="מדריכים">
+      <a href="/articles/">מדריכים</a>
+      <a href="/articles/eifo-hachi-zol/">איפה הכי זול לעשות קניות</a>
+      <a href="/articles/mishloach-kniyot/">משלוח קניות עד הבית</a>
+      <a href="/articles/chisachon-bakniyot/">איך לחסוך בקניות בסופר</a>
+      <a href="/articles/mivtzaim-basuper/">מבצעים בסופר</a>
+    </nav>
     <p>© 2026 כל הזכויות שמורות ל־Segolan Holdings</p>
     <p><a href="#/terms">תנאי שימוש</a> · <a href="#/accessibility">הצהרת נגישות</a></p>
   </footer>`;
@@ -1851,7 +1858,7 @@ function noteH() {
 }
 function errorCardH() {
   return `<div class="wrap"><div class="error-card">
-    <h2>לא הצלחנו לטעון את הנתונים</h2>
+    <h1>לא הצלחנו לטעון את הנתונים</h1>
     <p>קובץ הנתונים <code>site/data/products.json.gz</code> לא נטען (${esc(state.errorMsg)}).</p>
     <p>בהרצה מקומית: <code>python build_site_data.py</code> ואז רענון.</p>
     <button class="btn-primary" data-action="reload">ניסיון חוזר</button>
@@ -1876,7 +1883,7 @@ function onboardingH() {
     <div class="ob-main">
       <div class="ob-brand">${logoSvg(44, false)}<span dir="ltr">ליםSlim</span></div>
       <div class="ob-badge">נתוני שקיפות מחירים רשמיים · מתעדכן יומית</div>
-      <h1 class="ob-title">רשימה אחת.<br>הסל הזול ביותר.</h1>
+      <h1 class="ob-title">רשימה אחת.<br>כל הסופרים.<br>הסל הזול ביותר.</h1>
       <div class="ob-flow" aria-label="איך זה עובד">
         <svg class="ob-river" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
           <path d="M80 -2 C 86 14, 30 16, 26 34 C 22 50, 74 48, 77 66 C 80 82, 62 88, 55 99"/>
@@ -2153,7 +2160,7 @@ function buildH() {
         note: `הכי זול כרגע: ${t.cheapest.label} · כולל משלוח משוער ${ils0(t.cheapest.m.fee)}` }
     : { label: '₪0', note: 'הוסיפו מוצרים כדי לראות הערכה' };
   return `<div class="wrap page">
-    <h2 class="page-title">בניית הרשימה שלך</h2>
+    <h1 class="page-title">בניית הרשימה שלך</h1>
     <p class="page-sub">מחפשים מוצר בקטלוג — הוא נמצא בכל הרשתות ומושווה אוטומטית.</p>
     <div class="bld-grid">
       <div>
@@ -2177,7 +2184,7 @@ function buildH() {
         </div>
         ${noteH()}
         <div class="card list-card">
-          <div class="list-head"><h3>הרשימה שלי</h3><span class="muted">${t.items.length} מוצרים ברשימה</span></div>
+          <div class="list-head"><h2>הרשימה שלי</h2><span class="muted">${t.items.length} מוצרים ברשימה</span></div>
           ${t.items.length ? rows : `<div class="list-empty">הרשימה ריקה — חפשו מוצר, בחרו מהמוצרים הנפוצים,
             או <button class="linklike" data-action="go-receipt">📸 צלמו קבלה</button> ונמלא אותה בשבילכם.</div>`}
           ${t.items.length ? `<div class="list-foot"><button class="btn-ghost" data-action="clear-list">🗑 ניקוי הרשימה</button></div>` : ''}
@@ -2185,7 +2192,7 @@ function buildH() {
       </div>
       <aside class="bld-side">
         <div class="side-card tinted">
-          <h4>מה חשוב לך?</h4>
+          <h2>מה חשוב לך?</h2>
           <p class="muted sm">קובע איך נדרג את הרשתות.</p>
           <div class="prio-list">${prio}</div>
         </div>
@@ -2206,7 +2213,7 @@ function resultsH() {
   const t = computeRows();
   if (!t.items.length) {
     return `<div class="wrap page"><div class="card empty-cta">
-      <h2>אין עדיין מה להשוות</h2><p class="muted">הוסיפו מוצרים לרשימה ונחשב את הסל הזול ביותר.</p>
+      <h1>אין עדיין מה להשוות</h1><p class="muted">הוסיפו מוצרים לרשימה ונחשב את הסל הזול ביותר.</p>
       <button class="btn-primary" data-action="go-build">לבניית הרשימה</button></div></div>`;
   }
   const modes = [['single', 'חנות אחת'], ['split', 'פיצול חכם']].map(([key, label]) =>
@@ -2277,7 +2284,7 @@ function resultsH() {
   }
   return `<div class="wrap page">
     <div class="res-head">
-      <div><h2 class="page-title">${esc(head)}</h2><p class="page-sub">${sub}</p></div>
+      <div><h1 class="page-title">${esc(head)}</h1><p class="page-sub">${sub}</p></div>
       <div class="seg">${modes}</div>
     </div>
     ${body}
@@ -2370,7 +2377,7 @@ function basketH() {
   const slot = nextSlot(label);
   return `<div class="wrap page">
     <a class="back-link" href="#/results">← חזרה להשוואה</a>
-    <h2 class="page-title">הסל שלך ב${esc(label)}</h2>
+    <h1 class="page-title">הסל שלך ב${esc(label)}</h1>
     <p class="page-sub">${lines.length} מתוך ${t.items.length} מוצרים נמצאו${m.noOnline
       ? ' · קנייה בסניף — אין חנות אונליין'
       : (slot ? ' · משלוח קרוב: ' + esc(slot) + ' (הערכה)' : '')}</p>
@@ -2378,11 +2385,11 @@ function basketH() {
       <div>
         <div class="card">${linesH || '<div class="list-empty">אף מוצר מהרשימה לא נמצא ברשת זו.</div>'}</div>
         ${deals.length ? `<div class="side-card tinted subs-card deals-card">
-          <h4>💡 השלמת מבצעים</h4>
+          <h2>💡 השלמת מבצעים</h2>
           <p class="muted sm">מבצעי כמות שכמעט הגעתם אליהם — הוסיפו יחידות כדי לקבל את מחיר המבצע.</p>
           ${dealsH}</div>` : ''}
         ${r.missing.length ? `<div class="side-card tinted subs-card">
-          <h4>חלופות למוצרים חסרים</h4>
+          <h2>חלופות למוצרים חסרים</h2>
           <p class="muted sm">מוצרים שלא נמצאו ב${esc(label)} — הצעה לחלופה דומה במחיר אמיתי מהקטלוג.</p>
           ${subsH}</div>` : ''}
       </div>
@@ -2436,7 +2443,7 @@ function doneH() {
   if (h.inStore) {
     return `<div class="done">
       <div class="done-circle">🏬</div>
-      <h2>הרשימה מוכנה לקנייה בסניף ${esc(h.label)}</h2>
+      <h1>הרשימה מוכנה לקנייה בסניף ${esc(h.label)}</h1>
       <p class="page-sub">${h.count} מוצרים (${ils0(h.total)} משוער, ללא דמי משלוח) הועתקו ללוח —
         מסודרים לפי סדר המחלקות בסופר, עם משבצת סימון ליד כל מוצר.
         שלחו לעצמכם בוואטסאפ וסמנו תוך כדי קנייה; בסניף אפשר לסרוק עם עגלת
@@ -2451,7 +2458,7 @@ function doneH() {
   }
   return `<div class="done">
     <div class="done-circle">✓</div>
-    <h2>הרשימה מוכנה ל${esc(h.label)}</h2>
+    <h1>הרשימה מוכנה ל${esc(h.label)}</h1>
     <p class="page-sub">העתקנו ${h.count} מוצרים (${ils0(h.total)} משוער) ללוח ופתחנו את ${esc(h.label)} אונליין בלשונית חדשה —
       הדביקו את הרשימה בחיפוש החנות או עברו מוצר־מוצר, ואשרו את העגלה שם.</p>
     <div class="done-ctas">
@@ -2507,7 +2514,7 @@ function savedH() {
     </div>`;
   }).join('');
   return `<div class="wrap page">
-    <h2 class="page-title">רשימות שמורות</h2>
+    <h1 class="page-title">רשימות שמורות</h1>
     <p class="page-sub">טוענים רשימה קיימת, או מסמנים כמה רשימות ומאחדים אותן לרשימה אחת — כפילויות מתמזגות אוטומטית.${state.saved.length ? '' : ' (אלה רשימות לדוגמה — שמרו רשימה משלכם ממסך הרשימה.)'}</p>
     ${noteH()}
     <div class="merge-bar"><span>${mergeBar}</span>
@@ -2526,7 +2533,7 @@ function setupH() {
   const fb = state.auth.mode === 'firebase';
   const signup = state.authMode === 'signup';
   const form = fb ? `
-      <h2 class="page-title">${signup ? 'פתיחת חשבון' : 'ברוכים השבים'}</h2>
+      <h1 class="page-title">${signup ? 'פתיחת חשבון' : 'ברוכים השבים'}</h1>
       <p class="page-sub">${signup
         ? 'הרשימות, הכתובת וההעדפות יסונכרנו לחשבון ויהיו זמינים מכל מכשיר.'
         : 'התחברו כדי לקבל את הרשימות וההעדפות שלכם מכל מכשיר.'}</p>
@@ -2555,7 +2562,7 @@ function setupH() {
       <p class="fine center">ההרשמה מהווה הסכמה ל<a href="#/terms">תנאי השימוש ומדיניות הפרטיות</a>.</p>
       <button class="btn-ghost block" data-action="go-build">המשך ללא חשבון</button>`
     : `
-      <h2 class="page-title">הגדרת פרופיל</h2>
+      <h1 class="page-title">הגדרת פרופיל</h1>
       <p class="page-sub">הפרטים — שם, כתובת ורשימות הקניות — נשמרים ומאובטחים בהתאם לחוק
         ול<a href="#/terms">תנאי השימוש ומדיניות הפרטיות</a>.</p>
       <div class="field"><label>שם מלא</label>
@@ -2574,7 +2581,7 @@ function setupH() {
     <div class="auth-aside">
       <div class="auth-blob a"></div><div class="auth-blob b"></div>
       <div class="auth-aside-in">
-        <h3>פרופיל אחד, כל הרשתות במקום אחד.</h3>
+        <h2>פרופיל אחד, כל הרשתות במקום אחד.</h2>
         ${['רשימות שמורות שמחושבות מחדש לפי מחירי היום',
            'העדפות רשתות וכתובת שנשמרות בדפדפן',
            'מעקב אחרי פוטנציאל החיסכון שלכם'].map(t =>
@@ -2602,7 +2609,7 @@ function profileH() {
       <div>
         <div class="card pro-head">
           ${avatar(p.name || state.auth.user?.email || 'א', 'xl')}
-          <div class="pro-id"><h2>${esc(p.name || state.auth.user?.name || 'אורח/ת')}</h2>
+          <div class="pro-id"><h1>${esc(p.name || state.auth.user?.name || 'אורח/ת')}</h1>
             <div class="muted">${esc(state.auth.user?.email || p.email || 'לא הוזן דוא"ל')}
               ${state.auth.user ? ' · <span class="sync-badge">☁ מסונכרן לחשבון</span>' : ''}</div></div>
           ${state.auth.user
@@ -2610,7 +2617,7 @@ function profileH() {
             : `<button class="btn-outline" data-action="go-setup">${state.auth.mode === 'firebase' ? 'התחברות / הרשמה' : 'עריכת פרופיל'}</button>`}
         </div>
         <div class="card">
-          <h4>פרטי משלוח</h4>
+          <h2>פרטי משלוח</h2>
           <div class="pro-fields">
             <div class="field"><label>כתובת</label>
               <input id="pAddress" class="input" value="${esc(state.address)}" placeholder="רחוב, מספר, עיר"></div>
@@ -2619,14 +2626,14 @@ function profileH() {
           </div>
         </div>
         <div class="card">
-          <h4>רשתות מועדפות</h4>
+          <h2>רשתות מועדפות</h2>
           <p class="muted sm">רק הרשתות המסומנות נכללות בהשוואה.</p>
           <div class="chips">${chips}</div>
         </div>
       </div>
       <aside class="bld-side">
-        <div class="side-card tinted"><h4>החיסכון שלי</h4>${stats}</div>
-        <div class="side-card elevated"><h4>הזמנות שהוכנו</h4>${orders}
+        <div class="side-card tinted"><h2>החיסכון שלי</h2>${stats}</div>
+        <div class="side-card elevated"><h2>הזמנות שהוכנו</h2>${orders}
           <button class="btn-outline block" data-action="go-saved">הרשימות השמורות שלי</button></div>
         <button class="btn-ghost block" data-action="reset-profile">מחיקת הפרופיל והנתונים מהדפדפן</button>
       </aside>
@@ -2636,32 +2643,32 @@ function profileH() {
 
 function termsH() {
   return `<div class="wrap page legal">
-    <h2 class="page-title">תנאי שימוש</h2>
+    <h1 class="page-title">תנאי שימוש</h1>
     <p class="muted sm">עודכן לאחרונה: 9 באוגוסט 2026</p>
     <div class="card">
-      <h4>1. כללי</h4>
+      <h2>1. כללי</h2>
       <p>אתר "ליםSlim" (להלן: "האתר") מופעל על ידי Segolan Holdings (להלן: "החברה") ומציג
       השוואת מחירים ומבצעים בין חנויות האונליין של רשתות מזון בישראל, לצד כלים לבניית
       רשימת קניות. השימוש באתר מהווה הסכמה מלאה לתנאים אלה. אם אינכם מסכימים לתנאים —
       אנא הימנעו משימוש באתר.</p>
-      <h4>2. אופי המידע באתר</h4>
+      <h2>2. אופי המידע באתר</h2>
       <p>המחירים והמבצעים מחושבים מקבצי מחירונים פומביים שהרשתות מפרסמות מכוח הדין,
       ומתעדכנים על בסיס יומי. ייתכנו פערים בין הנתונים המוצגים לבין המחיר בפועל.
       דמי המשלוח, מינימום ההזמנה, חלונות האספקה ואזורי החלוקה המוצגים באתר הם
       <b>הערכות בלבד</b>. המחיר הסופי, זמינות המוצרים ותנאי האספקה נקבעים אך ורק
       באתר הרשת שבה מתבצעת ההזמנה.</p>
-      <h4>3. העדר אחריות</h4>
+      <h2>3. העדר אחריות</h2>
       <p>האתר והמידע שבו מסופקים כמות שהם (AS-IS) וללא כל אחריות, מפורשת או משתמעת.
       החברה אינה מתחייבת לדיוק, שלמות, עדכניות או זמינות המידע והשירות, ולא תישא
       בכל אחריות ו/או חבות, ישירה או עקיפה, לכל נזק, הפסד או הוצאה שייגרמו למשתמש
       או לצד שלישי בקשר עם השימוש באתר או הסתמכות על המידע שבו — והשימוש הוא באחריות
       המשתמש בלבד. ההזמנה, התשלום והאספקה מתבצעים ישירות מול הרשת הרלוונטית; החברה
       אינה צד לעסקה, אינה מוכרת מוצרים ואינה אחראית להם.</p>
-      <h4>4. קניין רוחני</h4>
+      <h2>4. קניין רוחני</h2>
       <p>© כל הזכויות באתר, בעיצובו ובסימניו שמורות ל־Segolan Holdings. אין להעתיק,
       לשכפל, להפיץ או לעשות שימוש מסחרי בתכני האתר ללא אישור מראש ובכתב מהחברה.
       שמות הרשתות, הלוגואים וסימני המסחר המוזכרים באתר שייכים לבעליהם; אזכורם נועד לזיהוי ולהשוואת מחירים בלבד ואין בו כדי להעיד על חסות, שיתוף פעולה או קשר מסחרי עם החברה.</p>
-      <h4>5. מקורות מידע</h4>
+      <h2>5. מקורות מידע</h2>
       <p>נתוני המחירים והמבצעים: מיזם <a href="https://www.gov.il/he/pages/cpfta_prices_regulations"
       target="_blank" rel="noopener">שקיפות המחירים</a> של משרד הכלכלה והתעשייה, מתוך
       הקבצים שמפרסמות הרשתות (שופרסל, רמי לוי, ויקטורי, יינות ביתן / קרפור, יוחננוף,
@@ -2672,7 +2679,7 @@ function termsH() {
       זיהוי טקסט בסריקת קבלות: מנוע הקוד הפתוח
       <a href="https://github.com/tesseract-ocr/tesseract" target="_blank" rel="noopener">Tesseract</a>,
       הפועל כולו בדפדפן המשתמש.</p>
-      <h4>6. פרטיות ומאגר מידע</h4>
+      <h2>6. פרטיות ומאגר מידע</h2>
       <p>במסגרת השימוש באתר נאספים ונשמרים פרטים שהמשתמש מוסר — ובהם שם, פרטי
       התקשרות, כתובת למשלוח ורשימות הקניות — וכן נתוני שימוש הנדרשים לתפעול השירות.
       המידע נשמר במאגרי החברה ומאובטח בהתאם לחוק הגנת הפרטיות, התשמ"א-1981,
@@ -2691,7 +2698,7 @@ function termsH() {
       ניתן להדביק את רשימת המצרכים כטקסט במקום. תוסף הדפדפן של ליםSlim שומר את
       רשימת ההעברה באחסון המקומי של הדפדפן בלבד, אינו אוסף מידע אישי, אינו ניגש
       לסיסמאות ואינו שולח נתונים לשום שרת.</p>
-      <h4>7. שינויים ודין חל</h4>
+      <h2>7. שינויים ודין חל</h2>
       <p>החברה רשאית לעדכן את האתר ואת התנאים בכל עת. על תנאים אלה יחולו דיני מדינת
       ישראל, וסמכות השיפוט הבלעדית נתונה לבתי המשפט המוסמכים במחוז תל אביב.</p>
     </div>
@@ -2700,25 +2707,25 @@ function termsH() {
 
 function accessibilityH() {
   return `<div class="wrap page legal">
-    <h2 class="page-title">הצהרת נגישות</h2>
+    <h1 class="page-title">הצהרת נגישות</h1>
     <p class="muted sm">עודכנה לאחרונה: 9 באוגוסט 2026</p>
     <div class="card">
-      <h4>מחויבות לנגישות</h4>
+      <h2>מחויבות לנגישות</h2>
       <p>Segolan Holdings פועלת להנגשת אתר "ליםSlim" לאנשים עם מוגבלות, מתוך תפיסה של
       שוויון הזדמנויות ובהתאם לחוק שוויון זכויות לאנשים עם מוגבלות, התשנ"ח-1998,
       ולתקנות שוויון זכויות לאנשים עם מוגבלות (התאמות נגישות לשירות), התשע"ג-2013,
       בשאיפה לעמידה בתקן הישראלי ת"י 5568 ברמה AA (בהתבסס על הנחיות WCAG 2.1).</p>
-      <h4>התאמות הנגישות באתר</h4>
+      <h2>התאמות הנגישות באתר</h2>
       <p>האתר תומך בניווט מלא במקלדת עם סימון מיקוד ברור, כתוב ב־HTML סמנטי עם תוויות
       ARIA לרכיבים אינטראקטיביים, מותאם לעברית וכיוון RTL, רספונסיבי למובייל, ושומר על
       ניגודיות צבעים נאותה. בנוסף זמין בכל עמודי האתר <b>תפריט נגישות</b> (הכפתור ♿
       בפינת המסך) המאפשר: הגדלת טקסט, ניגודיות גבוהה, גווני אפור, הדגשת קישורים,
       גופן קריא ועצירת אנימציות. ההעדפות נשמרות בדפדפן.</p>
-      <h4>מגבלות ידועות</h4>
+      <h2>מגבלות ידועות</h2>
       <p>תמונות המוצרים מגיעות ממקור חיצוני (Open Food Facts) וייתכן שלחלקן חסר תיאור
       מלא; אתרי הרשתות שאליהם מפנה האתר אינם בשליטתנו ורמת הנגישות בהם באחריות
       מפעיליהם. אנו ממשיכים לפעול לשיפור הנגישות באופן שוטף.</p>
-      <h4>פנייה בנושא נגישות</h4>
+      <h2>פנייה בנושא נגישות</h2>
       <p>נתקלתם בקושי או שיש לכם הצעה לשיפור? נשמח לשמוע ולטפל בהקדם:
       Segolan Holdings — דוא"ל: <a href="mailto:segolen.holdings@gmail.com">segolen.holdings@gmail.com</a>.</p>
     </div>

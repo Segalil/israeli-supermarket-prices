@@ -1,0 +1,9 @@
+# סלים=Slim — https://slim-super.com
+# Everything is public and crawlable. /data/ MUST stay allowed: the app fetches
+# products.json.gz at runtime, and Googlebot's renderer honours robots.txt for
+# subresources too — blocking it would make the crawler see a broken app.
+
+User-agent: *
+Allow: /
+
+Sitemap: https://slim-super.com/sitemap.xml
