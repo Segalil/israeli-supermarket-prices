@@ -139,6 +139,22 @@ def test_sitemap_lists_every_page():
                 f"sitemap lists {url} but the file does not exist"
 
 
+def test_sitemap_home_lastmod_is_stampable():
+    """deploy-pages.yml rewrites the home <lastmod> with the snapshot date.
+
+    It matches on this exact shape, so a reformat of sitemap.xml would break the
+    stamp. Keep the pattern here identical to the one in the workflow.
+    """
+    pattern = r"(<loc>https://slim-super\.com/</loc>\s*<lastmod>)[^<]+"
+    sitemap = read(os.path.join(SITE, "sitemap.xml"))
+    assert len(re.findall(pattern, sitemap)) == 1, \
+        "home <loc>/<lastmod> pair not in the shape deploy-pages.yml stamps"
+
+    workflow = read(os.path.join(ROOT, ".github", "workflows", "deploy-pages.yml"))
+    assert pattern in workflow, \
+        "deploy-pages.yml no longer stamps the sitemap with this exact pattern"
+
+
 def test_robots_allows_crawling_and_points_at_sitemap():
     robots = read(os.path.join(SITE, "robots.txt"))
     assert f"Sitemap: {BASE}/sitemap.xml" in robots

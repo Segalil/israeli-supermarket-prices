@@ -152,7 +152,10 @@ Downloading is done via the il-supermarket-scraper library (PyPI).
   canonical == og:url == the real path, valid JSON-LD (Article + BreadcrumbList
   + FAQPage; the hub uses CollectionPage + ItemList), and every /articles/ link
   resolving to a file. site/robots.txt + site/sitemap.xml list them; ADD NEW
-  GUIDES TO BOTH. robots.txt must keep /data/ crawlable — Googlebot's renderer
+  GUIDES TO BOTH. The home entry's <lastmod> is stamped at deploy time with the
+  snapshot date (deploy-pages.yml matches the exact <loc>/<lastmod> shape —
+  test_sitemap_home_lastmod_is_stampable guards it); guide entries keep the
+  date of their last real content change, updated by hand. robots.txt must keep /data/ crawlable — Googlebot's renderer
   honours robots.txt for subresources, so blocking it would make the crawler see
   a broken app. Content rule: the guides never print an invented price, percentage
   or statistic, and never crown a chain "the cheapest" — the delivery figures they

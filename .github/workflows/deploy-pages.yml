@@ -48,6 +48,23 @@ jobs:
       - name: Build site dataset from latest snapshot
         run: python build_site_data.py
 
+      # The home page's freshness is the PRICE-SNAPSHOT date, not the deploy time:
+      # if a daily scrape fails we must not tell crawlers the data changed today.
+      # Only the home entry is stamped — the guide pages keep their real dates.
+      - name: Stamp sitemap lastmod with the snapshot date
+        run: |
+          python - <<'PY'
+          import gzip, json, pathlib, re
+          date = json.loads(gzip.open('site/data/products.json.gz', 'rt', encoding='utf-8').read())['date']
+          path = pathlib.Path('site/sitemap.xml')
+          xml, n = re.subn(r'(<loc>https://slim-super\.com/</loc>\s*<lastmod>)[^<]+',
+                           lambda m: m.group(1) + date, path.read_text(encoding='utf-8'), count=1)
+          if n != 1:
+              raise SystemExit('sitemap.xml: home <lastmod> not found — was the file reformatted?')
+          path.write_text(xml, encoding='utf-8')
+          print('sitemap home lastmod ->', date)
+          PY
+
       # GitHub Pages serves max-age=600 and its headers aren't configurable —
       # returning visitors would run stale JS/CSS for up to 10 minutes after a
       # deploy. Stamping the asset URLs with a content hash busts the cache the
