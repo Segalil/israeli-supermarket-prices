@@ -169,7 +169,29 @@ Downloading is done via the il-supermarket-scraper library (PyPI).
   All persistence is localStorage (slim-*-v2 keys, migrates smart-basket-list-v1).
   Loads the gzipped JSON via DecompressionStream (magic-byte sniffing).
   Hebrew search matching: word-prefix with exact-word priority (see keywordScore)
-  so "חלב" ≠ "סחלב"/"חלבה" — reuse it for any new keyword features.
+  so "חלב" ≠ "סחלב"/"חלבה" — reuse it for any new keyword features. NOTE the
+  search BOX (suggestMatches) is layered and the layering is the safety argument:
+  1. nameTier(pr, term) scores a contiguous match 0..5, top rung "the name IS the
+     term" (without it a generic product loses to its variants — every
+     "מלפפון בחומץ" also starts with מלפפון and is stocked in more chains).
+     Its bottom rung is a raw substring, so חלב does still surface סחלב/חלבה,
+     ranked below every real word match; removing that rung would DROP results.
+  2. queries of >=2 words additionally match when EVERY word lands somewhere in
+     the name (via keywordScore, name only — letting a brand satisfy a word makes
+     "קולה זירו מארז" answer with a Sprite branded קוקה קולה), scored 6+worst.
+  3. a word that still fails may be satisfied by the pack tag (packOf), never
+     stripped from the query, scored at the weakest rung.
+  Scoring the later layers strictly BELOW the earlier ones is what makes each
+  addition provably additive: measured over 400 real-name queries, the contiguous
+  match set is unchanged and no token-only row ever outranks a contiguous one.
+  Keep that property — and the digit-only מק"ט branch returning before any
+  tokenising — if you touch this.
+  packOf reads a pack size from the NAME (collective numerals שישייה/שישיות/
+  תריסר…, "מארז N", "N יח'/פחיות", bare מארז = PACK_ANY). An "N*M" counts only
+  when unitSig(pr.u) corroborates the multiplication, because "45*32ג" and
+  "40X20 ס\"מ" are print orders and dimensions; a בייגל/לחמני guard keeps
+  "בייגלה שמיניות" (a pretzel shape) untagged. ~5.7% of the catalogue tags.
+  Tests: tests/test_search.py over tests/search_harness.js.
   * headings: exactly ONE <h1> per screen (.page-title is the h1; screens without
     one — done/profile/error/results-empty — promote their lead heading). Sections
     are h2, in-card sub-blocks h3. The CSS matches BOTH the old and new tags

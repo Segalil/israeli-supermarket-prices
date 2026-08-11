@@ -817,7 +817,72 @@ function ensureValueIndex() {
   return valueIndex;
 }
 
-/* The count a name states, when it states one ("מארז 3 מברשות", "10 יח'"). */
+/* ---------- multipack vocabulary ----------
+   One drink is listed as "שישייה 1.75 ליטר", "שישיות 2 לי", "6*330 מ\"ל" and
+   "מארז 6 פחיות", so a shopper who types one of those finds only that one. These
+   read a pack size out of the NAME so the search can treat the spellings as
+   equivalent. Nothing here touches the dataset — the tag is derived at runtime. */
+const PACK_ANY = -1;
+const PACK_CONTAINER_RE = /(?:מארז|מאגדת|חבילת|סט)\s*(\d+)/;
+const PACK_PIECES_RE = /(\d+)\s*(?:יח|יחידות|יחידה|פחיות|בקבוקים|בקבוקי)\b/;
+const PACK_BARE_RE = /(^|\s)(מארז|מאגדת)(\s|$)/;
+/* Collective numerals, anchored so a bare "שישי" (Friday) is not a six-pack. */
+const PACK_COLLECTIVE = [
+  [/^(זוג|זוגות|צמד)$/, 2], [/^שליש[יי]+(ה|ת|ות)$/, 3], [/^רביע[יי]+(ה|ת|ות)$/, 4],
+  [/^חמיש[יי]+(ה|ת|ות)$/, 5], [/^שיש[יי]+(ה|ת|ות)$/, 6], [/^שביע[יי]+(ה|ת|ות)$/, 7],
+  [/^שמינ[יי]+(ה|ת|ות)$/, 8], [/^תשיע[יי]+(ה|ת|ות)$/, 9], [/^עשיר[יי]+(ה|ת|ות)$/, 10],
+  [/^תריס(ר)?$/, 12],
+];
+/* "בייגלה שמיניות" is a pretzel SHAPE, not eight of anything. */
+const PACK_SHAPE_WORDS = /בייגל|לחמני/;
+
+/* The pack size a name states: a number, PACK_ANY for "מארז" with no count, or
+   null. Collective words and explicit counts win over an "N*M", which is only
+   believed when the unit field corroborates the multiplication — the catalogue
+   is full of "45*32ג" and "40X20 ס\"מ" that are dimensions, not packs. */
+function packOf(pr) {
+  if (pr._pack !== undefined) return pr._pack;
+  const name = stripQuotes(pr.nLow);
+  let pack = null;
+  if (!PACK_SHAPE_WORDS.test(name)) {
+    for (const w of name.split(/[^\wא-ת]+/)) {
+      for (const [rx, n] of PACK_COLLECTIVE) {
+        if (rx.test(w)) { pack = n; break; }
+      }
+      if (pack) break;
+    }
+  }
+  if (pack == null) {
+    const m = name.match(PACK_CONTAINER_RE) || name.match(PACK_PIECES_RE);
+    if (m) pack = parseInt(m[1], 10);
+  }
+  if (pack == null) {
+    const m = name.match(/(\d+)\s*[*x×]\s*(\d+(?:\.\d+)?)/);
+    const sig = m && unitSig(pr.u);
+    if (m && sig) {
+      const total = parseInt(m[1], 10) * parseFloat(m[2]);
+      // the name's "each" may be in the other scale (6 * 1.5 ליטר -> 9000 ml)
+      const ok = [1, 1000].some(f => Math.abs(sig.amount - total * f) <= sig.amount * 0.02);
+      if (ok) pack = parseInt(m[1], 10);
+    }
+  }
+  if (pack == null && PACK_BARE_RE.test(name)) pack = PACK_ANY;
+  if (!(pack > 1) && pack !== PACK_ANY) pack = null;    // "מארז 1" is not a pack
+  pr._pack = pack;
+  return pack;
+}
+
+/* The pack size a QUERY word asks for, or null if it is not a pack word. */
+function packTermValue(term) {
+  const t = stripQuotes(term);
+  for (const [rx, n] of PACK_COLLECTIVE) if (rx.test(t)) return n;   // covers שישייה/שישיות/שישיית
+  if (/^(מארז|מארזים|מאגדת|פחיות|בקבוקים)$/.test(t)) return PACK_ANY;
+  return null;
+}
+
+/* The count a name states, when it states one ("מארז 3 מברשות", "10 יח'").
+   Kept separate from packOf: this one feeds a data-sanity guard in the basket
+   and must stay conservative, while packOf casts a wider net for search. */
 function statedCount(pr) {
   const n = stripQuotes(pr.nLow);
   const m = n.match(/(?:מארז|חבילת|סט)\s*(\d+)/) || n.match(/(\d+)\s*(?:יח|יחידות|יחידה)\b/);
@@ -3138,8 +3203,18 @@ function suggestMatches(q) {
         if (terms.length < 2) continue;
         let worst = 0;
         for (const t of terms) {
-          const ts = keywordScore(pr, t);
-          if (ts < 0) { worst = -1; break; }
+          let ts = keywordScore(pr, t);
+          if (ts < 0) {
+            // A pack word the name spells differently: the shopper's "שישייה"
+            // is this product's "6*330" or "פחיות תריס". The word is satisfied,
+            // never stripped from the query, so a product that genuinely says
+            // שישייה still wins on the literal match above.
+            const want = packTermValue(t), has = want == null ? null : packOf(pr);
+            const fits = want != null && has != null &&
+              (want === PACK_ANY || has === PACK_ANY || want === has);
+            if (!fits) { worst = -1; break; }
+            ts = 5;                      // weakest rung: a synonym, not the word
+          }
           if (ts > worst) worst = ts;
           spread += ts;
         }

@@ -3,7 +3,8 @@
 'use strict';
 const loadApp = require('./load_app');
 
-const { state, suggestMatches, nameTier } = loadApp(['state', 'suggestMatches', 'nameTier']);
+const { state, suggestMatches, nameTier, packOf, packTermValue } =
+  loadApp(['state', 'suggestMatches', 'nameTier', 'packOf', 'packTermValue']);
 
 const CHAINS = ['שופרסל', 'רמי לוי'];
 
@@ -26,6 +27,16 @@ const CATALOGUE = [
   prod('7290000000010', 'מלפפון', [2.9, 3.1], { u: '1 קילוגרם' }),
   prod('7290000000011', 'מלפפון בחומץ 290 גרם', [8.0, 8.0], { u: '290 גרם' }),
   prod('7290000000012', 'קוטג 5% תנובה 250 גרם', [7.2, 7.0]),
+  // one drink, four spellings of the same six-pack
+  prod('7290000000020', 'קוקה קולה זירו שישייה 1.75 ליטר', [40.0, null], { u: '10.5 ליטר' }),
+  prod('7290000000021', 'קוקה קולה זירו 6*330 מל', [24.0, null], { u: '1.98 ליטר' }),
+  prod('7290000000022', 'קוקה קולה זירו מארז 6 פחיות', [25.0, null], { u: '1.98 ליטר' }),
+  prod('7290000000023', 'קוקה קולה זירו 1.5 ליטר', [8.0, null], { u: '1.5 ליטר' }),
+  // things that look like packs and are not
+  prod('7290000000024', 'צפס ברביקיו 45*32 גרם', [5.0, null], { u: '45 גרם' }),
+  prod('7290000000025', 'גזה 40x20 סמ', [9.0, null], { u: '1 יחידות' }),
+  prod('7290000000026', 'בייגלה שמיניות גדולות 400 גרם', [11.0, null], { u: '400 גרם' }),
+  prod('7290000000027', 'זוג מגבות מטבח 40*60 סמ', [19.0, null], { u: "1 יח'" }),
 ];
 
 state.chains = CHAINS;
@@ -92,5 +103,33 @@ process.stdout.write(JSON.stringify({
   singleTokenNeverUsesTokenPath: {
     // one word that matches nothing contiguous must stay empty
     nonsense: names('זזזזז').length,
+  },
+  packTags: {
+    sixPackWord: packOf(CATALOGUE.find(p => p.n.includes('שישייה'))),
+    sixPackTimes: packOf(CATALOGUE.find(p => p.n.includes('6*330'))),
+    sixPackContainer: packOf(CATALOGUE.find(p => p.n.includes('מארז 6'))),
+    singleBottle: packOf(CATALOGUE.find(p => p.n.includes('1.5 ליטר'))),
+    dimensionsNotAPack: packOf(CATALOGUE.find(p => p.n.includes('45*32'))),
+    gauzeNotAPack: packOf(CATALOGUE.find(p => p.n.includes('40x20'))),
+    bagelShapeNotAPack: packOf(CATALOGUE.find(p => p.n.includes('בייגלה'))),
+    countWordBeatsDimensions: packOf(CATALOGUE.find(p => p.n.includes('מגבות'))),
+  },
+  packTerms: {
+    shishiya: packTermValue('שישייה'),
+    shishiyaOneYod: packTermValue('שישיה'),
+    shishiyat: packTermValue('שישיית'),
+    shishiyot: packTermValue('שישיות'),
+    friday: packTermValue('שישי'),      // NOT a pack
+    maaraz: packTermValue('מארז'),
+    tersar: packTermValue('תריסר'),
+    milk: packTermValue('חלב'),
+  },
+  packSearch: {
+    byWord: names('קוקה קולה זירו שישייה'),
+    byOneYod: names('קוקה קולה זירו שישיה'),
+    byConstruct: names('שישיית קוקה קולה זירו'),
+    byContainer: names('קולה זירו מארז'),
+    singleBottleNotOffered: names('קוקה קולה זירו שישייה')
+      .includes('קוקה קולה זירו 1.5 ליטר'),
   },
 }, null, 1));

@@ -82,3 +82,40 @@ def test_barcode_path_untouched(out):
 
 def test_a_single_token_never_enters_the_token_path(out):
     assert out["singleTokenNeverUsesTokenPath"]["nonsense"] == 0
+
+
+def test_pack_tag_reads_real_packs_only(out):
+    """A number times a number is a pack only when the unit corroborates it —
+    "45*32 גרם" filed as a 45 g bag is a print order, not 45 bags."""
+    tags = out["packTags"]
+    assert tags["sixPackWord"] == 6
+    assert tags["sixPackTimes"] == 6
+    assert tags["sixPackContainer"] == 6
+    assert tags["singleBottle"] is None
+    assert tags["dimensionsNotAPack"] is None
+    assert tags["gauzeNotAPack"] is None
+    assert tags["bagelShapeNotAPack"] is None, "שמיניות is a pretzel shape here"
+    assert tags["countWordBeatsDimensions"] == 2, "זוג wins over the 40*60 cm"
+
+
+def test_pack_words_in_a_query(out):
+    t = out["packTerms"]
+    assert t["shishiya"] == t["shishiyaOneYod"] == t["shishiyat"] == t["shishiyot"] == 6
+    assert t["friday"] is None, "a bare שישי is Friday, not a six-pack"
+    assert t["maaraz"] == -1        # PACK_ANY
+    assert t["tersar"] == 12
+    assert t["milk"] is None
+
+
+def test_a_six_pack_is_found_however_it_is_spelled(out):
+    s = out["packSearch"]
+    for label in ("byWord", "byOneYod", "byConstruct"):
+        hits = s[label]
+        assert any("6*330" in h for h in hits), f"{label} missed the 6*330 listing"
+        assert any("מארז 6" in h for h in hits), f"{label} missed the מארז 6 listing"
+    assert any("מארז 6" in h or "6*330" in h for h in s["byContainer"])
+
+
+def test_asking_for_a_pack_does_not_return_the_single(out):
+    assert not out["packSearch"]["singleBottleNotOffered"], \
+        "a shopper asking for a six-pack must not be handed the 1.5L bottle"
