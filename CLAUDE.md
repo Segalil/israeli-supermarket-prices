@@ -101,6 +101,20 @@ Downloading is done via the il-supermarket-scraper library (PyPI).
     computes the next typical 4h window (no Shabbat) from CHAIN_META.speed;
   * merged products keep aliases → byKey maps alias keys too, so saved lists
     survive consolidation.
+  * pack value ("אותו מוצר, אריזה משתלמת יותר" in the basket): betterValueAt()
+    offers the same product in a different pack when it is cheaper PER UNIT OF
+    MEASURE in that chain. Deliberately narrow — a loose similarity rule was
+    measured against the real catalogue and proposed swapping oatmeal for penne,
+    and a first cut here suggested regular coffee capsules for decaf. The bar is
+    valueIdentity(): the name with pack size removed, where a number is dropped
+    only when a unit word follows it, so "1.5 ליטר" goes and "גודל 3" stays;
+    plus same category, same unit KIND, size ratio <= 6x, different size (equal
+    size is a duplicate listing, not a better pack) and >= 8% gain per unit.
+    unitSig()/perUnitPrice() MIRROR unit_signature() in basket.py — JS \b is
+    ASCII-only so the two silently diverged around Hebrew until tests/
+    test_unit_sig.py compared them; keep that test green. valueIndex is keyed on
+    the state.products array itself so it re-derives when the catalogue is
+    replaced. Tests: tests/test_pack_value.py over tests/value_harness.js.
   * receipt scan (#/receipt; entry points: nav bar, onboarding + build CTAs,
     saved-lists button, and the post-registration hand-off welcomeToReceipt —
     wired into BOTH Google flows: popup cred and getRedirectResult, via

@@ -564,6 +564,20 @@ html.a11y-noanim .ob-cta-main { animation: none; }
   background: var(--surface); border-radius: var(--radius-sm); padding: 14px 18px; margin-bottom: 10px;
 }
 .sub-main { flex: 1; min-width: 0; }
+/* The pack-value row carries two names, a per-unit comparison, a price and a
+   button. That never fits the flex row — the side card is ~330px wide even on a
+   desktop — so it stacks into a head and a foot at every width. */
+.value-row { display: block; }
+.value-head { display: flex; align-items: center; gap: 14px; }
+.value-foot {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 10px; flex-wrap: wrap; margin-top: 10px;
+  border-top: 1px solid var(--divider); padding-top: 10px;
+}
+.value-gain { font-size: 13px; color: var(--text-2); }
+.value-gain b { color: var(--brand-ink); font-size: 14px; }
+.value-actions { display: flex; align-items: center; gap: 10px; }
+.value-card h2 { display: flex; align-items: center; gap: 6px; }
 .sub-missing { font-size: 13px; color: var(--text-2); text-decoration: line-through; }
 .sub-name { font-weight: 600; }
 .checkout { position: sticky; top: 96px; }

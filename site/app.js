@@ -727,6 +727,122 @@ function effPriceAt(pr, label) {
   const base = priceAt(pr, label);
   return base == null ? null : lineCost(pr, label, 1);
 }
+/* ---------- price per unit of measure ----------
+   MIRROR of unit_signature() in israeli_prices/basket.py — the dataset ships the
+   unit only as display text, so the client re-derives it. tests/test_unit_sig.py
+   runs both over the same strings and fails if they ever drift. ml before ליטר
+   ("מיליליטר" contains it), ק"ג before גרם, same as the Python. */
+/* Matched on whole words rather than with \b: JS word boundaries are ASCII-only,
+   so \b behaves differently around Hebrew than it does in Python's unicode-aware
+   regex, and the two implementations silently diverged until test_unit_sig
+   compared them. Order still matters — ml before ליטר, ק"ג before גרם. */
+const UNIT_KINDS = [
+  [/^(קג|קילוגרם|קילו)$/, 'g', 1000],
+  [/^(מל|מיליליטר)$/, 'ml', 1],
+  [/^(ליטר)$/, 'ml', 1000],
+  [/^(גרם|גרמים|גר|ג)$/, 'g', 1],
+  [/^(יח|קרטון|מארז)$/, 'unit', 1],
+];
+function unitSig(u) {
+  const text = (u || '').trim();
+  if (!text) return null;
+  const m = text.match(/[\d.]+/);
+  const amount = m ? parseFloat(m[0]) : 1;
+  if (!(amount > 0)) return null;              // "0 יחידות" carries no size
+  const bare = stripQuotes(text);              // ק"ג -> קג, יח' -> יח
+  const words = bare.split(/[^\wא-ת%]+/).filter(Boolean);
+  for (const [rx, kind, factor] of UNIT_KINDS) {
+    if (words.some(w => rx.test(w))) {
+      return { kind, amount: Math.round(amount * factor * 1000) / 1000 };
+    }
+  }
+  if (/יחיד/.test(bare)) return { kind: 'unit', amount };
+  return null;
+}
+/* price for one kilo / one litre / one piece, so pack sizes are comparable */
+const UNIT_LABEL = { g: 'לק"ג', ml: 'לליטר', unit: 'ליחידה' };
+function perUnitPrice(price, sig) {
+  if (price == null || !sig) return null;
+  const per = sig.kind === 'unit' ? sig.amount : sig.amount / 1000;   // kg / litre
+  return per > 0 ? price / per : null;
+}
+
+/* Same product, different pack — cheaper per unit of measure.
+   Deliberately NOT a general "similar product" search: a loose similarity rule
+   was measured to suggest swapping oatmeal for penne. The family is the first
+   two words of the name plus the same category and the same unit KIND, and the
+   comparison is price per kilo/litre/piece, so a bigger pack can win on merit
+   without pretending a different product is the same one. */
+const VALUE_MIN_GAIN = 0.08;    // below this the swap is noise
+const VALUE_MAX_SIZE_RATIO = 6; // don't answer "500 גרם" with a catering tub
+/* Includes the truncations the price files are full of — "2 ליט", "500 גר",
+   "1.75 לי" are all sizes, and leaving them in the identity split one product
+   into a family per chain. */
+const SIZE_WORD = /^(ג|גר|גרמ|גרם|גרמים|קג|קילו|קילוג|קילוגרם|מ|מל|מיל|מילי|מיליליטר|ל|לי|ליט|ליטר|יח|יחי|יחידה|יחידות)$/;
+
+/* The name with its PACK SIZE removed — "קוקה קולה זירו 1.5 ליטר" and
+   "קוקה קולה זירו 2 ליטר" share an identity, so one is the other in a different
+   bottle. A number is dropped only when a unit word follows it, which is what
+   separates a size from a variant: "מנגט צבעוני גודל 3" keeps its 3 and so never
+   matches "גודל 2". Sorted, so word order does not matter. */
+function valueIdentity(pr) {
+  // tokenise rather than split: keeps "1.5" whole (a split on "." made it "1"
+  // and "5") and prises apart the glued names the files ship, "בקבוק500מ" ->
+  // בקבוק | 500 | מ
+  const words = stripQuotes(pr.nLow).match(/\d+(?:\.\d+)?|[א-תa-z]+|%/g) || [];
+  const keep = [];
+  for (let i = 0; i < words.length; i++) {
+    const w = words[i];
+    if (/^[\d.]+$/.test(w) && SIZE_WORD.test(words[i + 1] || '')) { i++; continue; }
+    if (SIZE_WORD.test(w)) continue;
+    keep.push(w);
+  }
+  return keep.length >= 2 ? keep.sort().join(' ') : null;   // 1 token is too weak
+}
+
+/* identity -> products. Keyed on the product array itself so it re-derives
+   whenever the catalogue is replaced, rather than relying on every caller
+   remembering to invalidate it. */
+let valueIndex = null, valueIndexFor = null;
+function ensureValueIndex() {
+  if (valueIndex && valueIndexFor === state.products) return valueIndex;
+  valueIndexFor = state.products;
+  valueIndex = new Map();
+  for (const pr of state.products) {
+    const id = valueIdentity(pr);
+    if (!id) continue;
+    const arr = valueIndex.get(id);
+    if (arr) arr.push(pr); else valueIndex.set(id, [pr]);
+  }
+  return valueIndex;
+}
+
+function betterValueAt(pr, label) {
+  const sig = unitSig(pr.u);
+  const price = effPriceAt(pr, label);
+  const mine = perUnitPrice(price, sig);
+  const id = valueIdentity(pr);
+  if (!sig || mine == null || !id) return null;
+  let best = null;
+  for (const alt of ensureValueIndex().get(id) || []) {
+    if (alt.k === pr.k || state.list.has(alt.k) || alt.c !== pr.c) continue;
+    const aSig = unitSig(alt.u);
+    if (!aSig || aSig.kind !== sig.kind) continue;
+    const ratio = aSig.amount / sig.amount;
+    if (ratio === 1) continue;      // same size = a duplicate listing, not a better pack
+    if (ratio > VALUE_MAX_SIZE_RATIO || ratio < 1 / VALUE_MAX_SIZE_RATIO) continue;
+    const aPrice = effPriceAt(alt, label);
+    const theirs = perUnitPrice(aPrice, aSig);
+    if (theirs == null || theirs >= mine * (1 - VALUE_MIN_GAIN)) continue;
+    if (!best || theirs < best.perUnit) {
+      best = { pr: alt, price: aPrice, perUnit: theirs, sig: aSig };
+    }
+  }
+  if (!best) return null;
+  return { alt: best, minePerUnit: mine, myPrice: price,
+    gain: 1 - best.perUnit / mine, label: UNIT_LABEL[sig.kind] || '' };
+}
+
 function promoHint(promo) {
   if (!promo) return '';
   const notes = [];
@@ -2355,6 +2471,28 @@ function basketH() {
     </div>`;
   }).join('');
 
+  const values = lines.map(({ pr, qty }) => {
+    const v = betterValueAt(pr, label);
+    return v ? { pr, qty, v } : null;
+  }).filter(Boolean).sort((a, b) => b.v.gain - a.v.gain).slice(0, 4);
+  const valuesH = values.map(({ pr, qty, v }) => `
+    <div class="sub-row value-row">
+      <div class="value-head">
+        ${productVisual(v.alt.pr)}
+        <div class="sub-main">
+          <div class="sub-missing">${esc(pr.n)} · ${esc(pr.u)}</div>
+          <div class="sub-name">${esc(v.alt.pr.n)} · ${esc(v.alt.pr.u)}</div>
+        </div>
+      </div>
+      <div class="value-foot">
+        <span class="value-gain">${money(v.minePerUnit)} ← <b>${money(v.alt.perUnit)}</b> ${esc(v.label)}
+          · זול ב־${Math.round(v.gain * 100)}%</span>
+        <span class="value-actions"><span class="item-price">${money(v.alt.price)}</span>
+          <button class="btn-outline sm" data-action="swap-value"
+            data-old="${esc(pr.k)}" data-new="${esc(v.alt.pr.k)}" data-qty="${qty}">החלפה</button></span>
+      </div>
+    </div>`).join('');
+
   const subs = r.missing.map(pr => {
     const alt = findSubstitute(pr, label);
     if (!alt) return { pr, none: true };
@@ -2388,6 +2526,10 @@ function basketH() {
           <h2>💡 השלמת מבצעים</h2>
           <p class="muted sm">מבצעי כמות שכמעט הגעתם אליהם — הוסיפו יחידות כדי לקבל את מחיר המבצע.</p>
           ${dealsH}</div>` : ''}
+        ${values.length ? `<div class="side-card tinted subs-card value-card">
+          <h2>⚖️ אותו מוצר, אריזה משתלמת יותר</h2>
+          <p class="muted sm">השוואה לפי מחיר ליחידת מידה ב${esc(label)} — ההחלפה משנה את הרשימה בכל הרשתות.</p>
+          ${valuesH}</div>` : ''}
         ${r.missing.length ? `<div class="side-card tinted subs-card">
           <h2>חלופות למוצרים חסרים</h2>
           <p class="muted sm">מוצרים שלא נמצאו ב${esc(label)} — הצעה לחלופה דומה במחיר אמיתי מהקטלוג.</p>
@@ -3223,6 +3365,19 @@ document.addEventListener('click', e => {
       state.list.set(btn.dataset.key, Math.min(99, cur < m ? m : cur + 1));
       persistList();
       toast(m > 1 ? `נוספו ${m} יחידות — כמות המבצע 🏷` : 'נוסף לרשימה 🏷');
+      render();
+      break;
+    }
+    case 'swap-value': {
+      // replace the item in the list, keeping the quantity; the list is global,
+      // so this changes every chain's basket, which the card says out loud
+      const oldK = btn.dataset.old, newK = btn.dataset.new;
+      const qty = parseInt(btn.dataset.qty, 10) || 1;
+      if (!state.list.has(oldK)) break;
+      state.list.delete(oldK);
+      state.list.set(newK, Math.min(99, (state.list.get(newK) || 0) + qty));
+      persistList();
+      toast('הוחלף לאריזה המשתלמת ⚖️');
       render();
       break;
     }
