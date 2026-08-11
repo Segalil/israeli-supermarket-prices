@@ -1876,19 +1876,28 @@ function onboardingH() {
       <div class="ob-brand">${logoSvg(44, false)}<span dir="ltr">ליםSlim</span></div>
       <div class="ob-badge">נתוני שקיפות מחירים רשמיים · מתעדכן יומית</div>
       <h1 class="ob-title">רשימה אחת.<br>הסל הזול ביותר.</h1>
-      <div class="ob-flow" aria-label="איך זה עובד">
+      ${(() => {
+        // wide translucent connector arrow, drawn for the right side; the left
+        // variant is the same SVG mirrored in CSS
+        const arrow = `<svg viewBox="0 0 170 104" fill="none" aria-hidden="true">
+          <path d="M148 6 C 158 42, 132 76, 88 90" stroke="currentColor" stroke-width="13" stroke-linecap="round"/>
+          <path d="M64 95 L83 72 L92 100 Z" fill="currentColor"/>
+        </svg>`;
+        return `<div class="ob-flow" aria-label="איך זה עובד">
         <div class="ob-step"><span class="ob-dot">🛒</span>
           <div class="ob-step-t"><b>בונים רשימה אחת</b>
             <span>חיפוש בקטלוג, סריקת קבלה 📸 או קישור למתכון 🔗</span></div></div>
-        <div class="ob-arrow" aria-hidden="true">↓</div>
+        <div class="ob-curve r">${arrow}</div>
         <div class="ob-step"><span class="ob-dot">⚖️</span>
           <div class="ob-step-t"><b>סלים משווה בין כל הרשתות</b>
             <span>מחירים רשמיים, מבצעים ודמי משלוח — בלחיצה אחת</span></div></div>
-        <div class="ob-arrow" aria-hidden="true">↓</div>
+        <div class="ob-curve l">${arrow}</div>
         <div class="ob-step"><span class="ob-dot">💸</span>
           <div class="ob-step-t"><b>מזמינים במקום הזול ביותר</b>
             <span>הרשימה עוברת מוכנה לחנות שבחרתם — והחיסכון נשאר אצלכם</span></div></div>
-      </div>
+        <div class="ob-curve r">${arrow}</div>
+      </div>`;
+      })()}
       <div class="ob-form">
         <div class="field"><label>כתובת למשלוח</label>
           <input id="obAddress" class="input" placeholder="רחוב, מספר, עיר" value="${esc(state.address)}"></div>

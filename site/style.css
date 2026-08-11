@@ -286,6 +286,7 @@ html.a11y-noanim *, html.a11y-noanim *::before, html.a11y-noanim *::after {
 .ob {
   max-width: 1180px; margin: 0 auto; min-height: 100vh;
   padding: 72px 40px 96px;
+  overflow-x: hidden; overflow-x: clip;   /* flow arrows overhang on phones */
   display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(0, .95fr);
   gap: 64px; align-items: center;
 }
@@ -296,30 +297,27 @@ html.a11y-noanim *, html.a11y-noanim *::before, html.a11y-noanim *::after {
 }
 .ob-title { font-size: 56px; line-height: 1.1; margin: 0 0 18px; letter-spacing: -.01em; }
 
-/* "how it works" — vertical flowchart; the icon dots and connector arrows ride
-   the side edge of the step cards (overlapping rail) */
-.ob-flow { display: flex; flex-direction: column; max-width: 470px; margin: 0 0 30px; }
+/* "how it works" — vertical flowchart. Wide translucent arrows sweep in from
+   OUTSIDE the list, alternating right/left/right, sliding behind the cards. */
+.ob-flow { position: relative; display: flex; flex-direction: column; max-width: 480px; margin: 0 0 28px; }
 .ob-step {
-  position: relative; display: flex; align-items: center;
+  position: relative; z-index: 1; display: flex; align-items: center; gap: 16px;
   background: var(--surface); border-radius: var(--radius-sm);
-  padding: 12px 30px 12px 18px; margin-inline-start: 22px;
-  box-shadow: var(--shadow-sm);
+  padding: 16px 20px; box-shadow: var(--shadow-sm);
 }
 .ob-dot {
-  position: absolute; inset-inline-start: -22px; top: 50%; transform: translateY(-50%);
-  width: 44px; height: 44px; border-radius: var(--pill);
-  background: var(--brand); border: 3px solid var(--bg);
-  display: flex; align-items: center; justify-content: center; font-size: 19px;
-  box-shadow: var(--shadow-sm);
+  flex: none; width: 54px; height: 54px; border-radius: var(--pill);
+  background: var(--brand-tint); border: 2px solid var(--brand-line);
+  display: flex; align-items: center; justify-content: center; font-size: 26px;
 }
-.ob-step-t { display: flex; flex-direction: column; gap: 1px; }
-.ob-step-t b { font-size: 15px; }
-.ob-step-t span { font-size: 13px; color: var(--text-2); }
-.ob-arrow {
-  position: relative; z-index: 1; width: 44px; text-align: center;
-  color: var(--brand); font-size: 22px; font-weight: 700; line-height: 1;
-  margin: -5px 0; pointer-events: none;
-}
+.ob-step-t { display: flex; flex-direction: column; gap: 2px; }
+.ob-step-t b { font-size: 19px; font-family: var(--font-display); font-weight: 400; }
+.ob-step-t span { font-size: 15px; color: var(--text-2); }
+.ob-curve { position: relative; z-index: 0; height: 80px; margin: -16px 0; pointer-events: none; }
+.ob-curve svg { position: absolute; top: 0; height: 100%; width: auto; color: var(--brand); opacity: .3; }
+.ob-curve.r svg { right: -38px; }        /* the list hugs the section's right edge */
+.ob-curve.l svg { left: -74px; transform: scaleX(-1); }
+.ob-curve:last-child { height: 64px; margin-bottom: -6px; }
 .ob-form { max-width: 460px; }
 .ob-ctas { display: flex; align-items: center; gap: 12px; margin-top: 8px; flex-wrap: wrap; }
 .ob-cta-main {
