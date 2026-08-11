@@ -295,9 +295,43 @@ html.a11y-noanim *, html.a11y-noanim *::before, html.a11y-noanim *::after {
   border-radius: var(--pill); padding: 7px 16px; font-weight: 700; font-size: 13px; margin-bottom: 26px;
 }
 .ob-title { font-size: 56px; line-height: 1.1; margin: 0 0 18px; letter-spacing: -.01em; }
-.ob-sub { font-size: 19px; max-width: 520px; margin: 0 0 32px; color: #4a3f3d; text-wrap: pretty; }
+
+/* "how it works" — vertical flowchart; the icon dots and connector arrows ride
+   the side edge of the step cards (overlapping rail) */
+.ob-flow { display: flex; flex-direction: column; max-width: 470px; margin: 0 0 30px; }
+.ob-step {
+  position: relative; display: flex; align-items: center;
+  background: var(--surface); border-radius: var(--radius-sm);
+  padding: 12px 30px 12px 18px; margin-inline-start: 22px;
+  box-shadow: var(--shadow-sm);
+}
+.ob-dot {
+  position: absolute; inset-inline-start: -22px; top: 50%; transform: translateY(-50%);
+  width: 44px; height: 44px; border-radius: var(--pill);
+  background: var(--brand); border: 3px solid var(--bg);
+  display: flex; align-items: center; justify-content: center; font-size: 19px;
+  box-shadow: var(--shadow-sm);
+}
+.ob-step-t { display: flex; flex-direction: column; gap: 1px; }
+.ob-step-t b { font-size: 15px; }
+.ob-step-t span { font-size: 13px; color: var(--text-2); }
+.ob-arrow {
+  position: relative; z-index: 1; width: 44px; text-align: center;
+  color: var(--brand); font-size: 22px; font-weight: 700; line-height: 1;
+  margin: -5px 0; pointer-events: none;
+}
 .ob-form { max-width: 460px; }
 .ob-ctas { display: flex; align-items: center; gap: 12px; margin-top: 8px; flex-wrap: wrap; }
+.ob-cta-main {
+  font-size: 19px; padding: 17px 36px;
+  box-shadow: 0 10px 26px rgba(53, 133, 142, .42);
+}
+@media (prefers-reduced-motion: no-preference) {
+  .ob-cta-main { animation: cta-float 2.6s ease-in-out infinite; }
+}
+html.a11y-noanim .ob-cta-main { animation: none; }
+@keyframes cta-float { 0%, 100% { transform: none; } 50% { transform: translateY(-3px); } }
+.ob-cta-note { font-size: 13px; color: var(--text-2); margin: 10px 2px 0; }
 .ob-hero { position: relative; height: 520px; }
 .ob-blob { position: absolute; inset: 0; background: var(--brand-tint); border-radius: 50% 50% 46% 54% / 52% 48% 52% 48%; }
 .hero-card {
@@ -781,7 +815,7 @@ html.a11y-noanim *, html.a11y-noanim *::before, html.a11y-noanim *::after {
   .nav-avatar { width: 34px; height: 34px; }
   .page-title { font-size: 26px; }
   .ob-title { font-size: 38px; }
-  .ob-sub { font-size: 16px; }
+  .ob-cta-main { width: 100%; text-align: center; }
   .ob { padding: 36px 16px 56px; }
   .ob-hero { height: 360px; }
   .hero-card { right: 12px; left: 12px; top: 36px; }

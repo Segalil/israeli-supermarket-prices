@@ -1876,16 +1876,28 @@ function onboardingH() {
       <div class="ob-brand">${logoSvg(44, false)}<span dir="ltr">ליםSlim</span></div>
       <div class="ob-badge">נתוני שקיפות מחירים רשמיים · מתעדכן יומית</div>
       <h1 class="ob-title">רשימה אחת.<br>הסל הזול ביותר.</h1>
-      <p class="ob-sub">בונים רשימת קניות פעם אחת, וסלים משווה אותה מול חנויות האונליין של הרשתות
-        המובילות בישראל — כולל הערכת דמי משלוח, מינימום הזמנה וזמינות מלאי — ומכינה את ההזמנה במקום הזול ביותר.</p>
+      <div class="ob-flow" aria-label="איך זה עובד">
+        <div class="ob-step"><span class="ob-dot">🛒</span>
+          <div class="ob-step-t"><b>בונים רשימה אחת</b>
+            <span>חיפוש בקטלוג, סריקת קבלה 📸 או קישור למתכון 🔗</span></div></div>
+        <div class="ob-arrow" aria-hidden="true">↓</div>
+        <div class="ob-step"><span class="ob-dot">⚖️</span>
+          <div class="ob-step-t"><b>סלים משווה בין כל הרשתות</b>
+            <span>מחירים רשמיים, מבצעים ודמי משלוח — בלחיצה אחת</span></div></div>
+        <div class="ob-arrow" aria-hidden="true">↓</div>
+        <div class="ob-step"><span class="ob-dot">💸</span>
+          <div class="ob-step-t"><b>מזמינים במקום הזול ביותר</b>
+            <span>הרשימה עוברת מוכנה לחנות שבחרתם — והחיסכון נשאר אצלכם</span></div></div>
+      </div>
       <div class="ob-form">
         <div class="field"><label>כתובת למשלוח</label>
           <input id="obAddress" class="input" placeholder="רחוב, מספר, עיר" value="${esc(state.address)}"></div>
         <div class="field"><label>רשתות להשוואה</label><div class="chips">${chips || '<span class="muted">טוען רשתות…</span>'}</div></div>
         <div class="ob-ctas">
-          <button class="btn-primary lg" data-action="go-build">בניית הרשימה שלי</button>
+          <button class="btn-primary lg ob-cta-main" data-action="go-build">בניית הרשימה שלי ←</button>
           <button class="btn-outline" data-action="go-setup">${state.auth.mode === 'firebase' ? 'התחברות / הרשמה' : 'הגדרת פרופיל'}</button>
         </div>
+        <p class="ob-cta-note">חינם ובלי הרשמה — מתחילים תוך חצי דקה</p>
         <button class="rcpt-cta" data-action="go-receipt">📸 <b>יש קבלה מהסופר?</b>
           סרקו אותה — ונבנה לכם את הרשימה אוטומטית</button>
       </div>
