@@ -104,4 +104,22 @@ cases.otherChainOnly = {
   ramiLevy: !!betterValueAt(state.products[0], 'רמי לוי'),
 };
 
+
+// 9. a piece count in the name that the unit contradicts invents a saving
+setCatalogue([
+  prod('brush1', 'מארז 3 מברשות שיניים', "1 יח'", [24.0, null]),
+  prod('brush3', 'מארז 3 מברשות שיניים', "3 יח'", [25.0, null]),
+]);
+state.list = new Map([['brush1', 1]]);
+cases.contradictoryUnitRejected = betterValueAt(state.products[0], 'שופרסל') === null;
+
+// ...but a genuine bigger box, with units that agree with the names, still wins
+setCatalogue([
+  prod('bags20', 'שקיות אשפה 20 יח', "20 יח'", [10.0, null]),
+  prod('bags90', 'שקיות אשפה 90 יח', "90 יח'", [20.0, null]),
+]);
+state.list = new Map([['bags20', 1]]);
+cases.genuineBiggerBoxKept = !!betterValueAt(state.products[0], 'שופרסל');
+
 process.stdout.write(JSON.stringify(cases, null, 1));
+

@@ -68,6 +68,15 @@ def test_product_already_in_the_list_not_offered(cases):
     assert cases["alreadyInListRejected"]
 
 
+def test_unit_that_contradicts_the_name_is_not_trusted(cases):
+    # "מארז 3 מברשות" filed as 1 unit next to its twin filed as 3 read as 65% off
+    assert cases["contradictoryUnitRejected"]
+
+
+def test_a_genuine_bigger_box_still_wins(cases):
+    assert cases["genuineBiggerBoxKept"], "20 vs 90 bags is a real pack difference"
+
+
 def test_offer_is_per_chain(cases):
     per_chain = cases["otherChainOnly"]
     assert per_chain["shufersal"], "no offer where the bigger pack is not sold"

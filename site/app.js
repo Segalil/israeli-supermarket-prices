@@ -817,17 +817,32 @@ function ensureValueIndex() {
   return valueIndex;
 }
 
+/* The count a name states, when it states one ("מארז 3 מברשות", "10 יח'"). */
+function statedCount(pr) {
+  const n = stripQuotes(pr.nLow);
+  const m = n.match(/(?:מארז|חבילת|סט)\s*(\d+)/) || n.match(/(\d+)\s*(?:יח|יחידות|יחידה)\b/);
+  return m ? parseInt(m[1], 10) : null;
+}
+/* A piece count in the name that the unit field contradicts means the unit is
+   wrong, and dividing by it invents a saving — the catalogue has "מארז 3
+   מברשות" filed as 1 unit next to its twin filed as 3, which read as 65% off. */
+function unitContradictsName(pr, sig) {
+  if (!sig || sig.kind !== 'unit') return false;
+  const stated = statedCount(pr);
+  return stated != null && stated !== sig.amount;
+}
+
 function betterValueAt(pr, label) {
   const sig = unitSig(pr.u);
   const price = effPriceAt(pr, label);
   const mine = perUnitPrice(price, sig);
   const id = valueIdentity(pr);
-  if (!sig || mine == null || !id) return null;
+  if (!sig || mine == null || !id || unitContradictsName(pr, sig)) return null;
   let best = null;
   for (const alt of ensureValueIndex().get(id) || []) {
     if (alt.k === pr.k || state.list.has(alt.k) || alt.c !== pr.c) continue;
     const aSig = unitSig(alt.u);
-    if (!aSig || aSig.kind !== sig.kind) continue;
+    if (!aSig || aSig.kind !== sig.kind || unitContradictsName(alt, aSig)) continue;
     const ratio = aSig.amount / sig.amount;
     if (ratio === 1) continue;      // same size = a duplicate listing, not a better pack
     if (ratio > VALUE_MAX_SIZE_RATIO || ratio < 1 / VALUE_MAX_SIZE_RATIO) continue;
