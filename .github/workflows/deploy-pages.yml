@@ -48,6 +48,17 @@ jobs:
       - name: Build site dataset from latest snapshot
         run: python build_site_data.py
 
+      # GitHub Pages serves max-age=600 and its headers aren't configurable —
+      # returning visitors would run stale JS/CSS for up to 10 minutes after a
+      # deploy. Stamping the asset URLs with a content hash busts the cache the
+      # moment the (revalidated) HTML lands; unchanged files keep their URL.
+      - name: Stamp asset URLs for cache busting
+        run: |
+          JS=$(md5sum site/app.js | cut -c1-8)
+          CSS=$(md5sum site/style.css | cut -c1-8)
+          sed -i "s|src=\"app.js\"|src=\"app.js?v=$JS\"|; s|href=\"style.css\"|href=\"style.css?v=$CSS\"|" site/index.html
+          grep -o 'app.js?v=[a-f0-9]*\|style.css?v=[a-f0-9]*' site/index.html
+
       - name: Configure Pages
         uses: actions/configure-pages@v5
         with:
