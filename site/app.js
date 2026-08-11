@@ -1818,8 +1818,8 @@ function statusPillH() {
 }
 function navH() {
   const links = [
-    ['build', 'הרשימה'], ['receipt', 'סריקת קבלה'], ['results', 'השוואה'],
-    ['saved', 'רשימות שמורות'], ['profile', 'פרופיל'],
+    ['build', 'הרשימה'], ['receipt', 'סריקת קבלה'], ['recipe', 'ייבוא מתכון'],
+    ['results', 'השוואה'], ['saved', 'רשימות שמורות'], ['profile', 'פרופיל'],
   ].map(([key, label]) =>
     `<a class="nav-link${state.screen === key ? ' on' : ''}" href="#/${key}">${label}</a>`).join('');
   const initial = (state.profile.name || state.auth.user?.name ||
@@ -2153,7 +2153,7 @@ function buildH() {
         note: `הכי זול כרגע: ${t.cheapest.label} · כולל משלוח משוער ${ils0(t.cheapest.m.fee)}` }
     : { label: '₪0', note: 'הוסיפו מוצרים כדי לראות הערכה' };
   return `<div class="wrap page">
-    <h2 class="page-title">מה צריך השבוע?</h2>
+    <h2 class="page-title">בניית הרשימה שלך</h2>
     <p class="page-sub">מחפשים מוצר בקטלוג — הוא נמצא בכל הרשתות ומושווה אוטומטית.</p>
     <div class="bld-grid">
       <div>
@@ -2822,9 +2822,24 @@ function render() {
   bindScreen();
 }
 
+// The nav strip scrolls horizontally once the links outgrow narrow screens, so the
+// active pill has to be scrolled into view. Fonts load with display=swap: the pills
+// reflow after first paint and the offset set there gets clamped, so re-apply on
+// every reflow of the strip (font swap, viewport resize) rather than once at render.
+let navPillObs = null;
+function keepNavPillVisible(link) {
+  if (navPillObs) navPillObs.disconnect();
+  const show = () => link.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+  show();
+  if (typeof ResizeObserver !== 'function') return;
+  navPillObs = new ResizeObserver(show);
+  navPillObs.observe(link.parentElement);
+  for (const pill of link.parentElement.children) navPillObs.observe(pill);
+}
+
 function bindScreen() {
   const activeLink = $('.nav-link.on');
-  if (activeLink) activeLink.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+  if (activeLink) keepNavPillVisible(activeLink);
   const si = $('#searchInput');
   if (si) {
     let timer = 0;
