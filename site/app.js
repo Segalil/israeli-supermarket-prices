@@ -2932,6 +2932,24 @@ function bindField(sel, save) {
 }
 
 function hideSuggest() { const b = $('#suggestBox'); if (b) { b.hidden = true; b.innerHTML = ''; } }
+/* How well a product name answers ONE search term. Lower is better, -1 = miss.
+   The top tier — the name IS the term — is what keeps a generic product above
+   its specific variants: every "מלפפון בחומץ…" also starts with "מלפפון", so
+   without it the pickled jars (stocked in 5 chains) outranked the fresh
+   cucumber (4 chains) on the chain-count tie-break. Quotes are stripped so
+   "קוטג" reaches "קוטג'". Scoring one TERM rather than the whole query keeps
+   this reusable for per-token matching of multi-word searches. */
+function nameTier(pr, term) {
+  const n = pr.nLow, t = stripQuotes(term);
+  const bare = stripQuotes(n), words = bare.split(/\s+/);
+  if (bare === t) return 0;                                  // the name is the term
+  if (words[0] === t) return 1;                              // first word, whole
+  if (words.includes(t)) return 2;                           // whole word, later
+  if (bare.startsWith(t)) return 3;                          // prefix of the name
+  if (words.some(w => w.startsWith(t))) return 4;            // prefix of some word
+  if (n.includes(term) || pr.bLow.includes(term)) return 5;  // anywhere / brand
+  return -1;
+}
 /* Phone layout — same 680px breakpoint the stylesheet switches the app at. */
 function isPhoneLayout() { return matchMedia('(max-width: 680px)').matches; }
 function renderSuggest(query) {
@@ -2949,10 +2967,10 @@ function renderSuggest(query) {
       if (codeHit) score = codeHit === q ? -1 : 1;
       else if (pr.nLow.includes(q)) score = 2;
       else continue;
-    } else if (pr.nLow.startsWith(q)) score = 0;
-    else if (pr.nLow.includes(' ' + q)) score = 1;
-    else if (pr.nLow.includes(q) || pr.bLow.includes(q)) score = 2;
-    else continue;
+    } else {
+      score = nameTier(pr, q);
+      if (score < 0) continue;
+    }
     scored.push([score, pr, codeHit]);
   }
   scored.sort((a, b) => a[0] - b[0] || avail(b[1]) - avail(a[1]) ||
