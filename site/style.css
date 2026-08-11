@@ -764,8 +764,14 @@ html.a11y-noanim *, html.a11y-noanim *::before, html.a11y-noanim *::after {
   .topnav { padding: 10px 14px; gap: 10px; }
   .brand-name, .nav-address { display: none; }
   .nav-right { gap: 10px; }
-  .nav-left { min-width: 0; flex-shrink: 1; }
-  .pill-status { font-size: 11px; padding: 7px 10px; max-width: 38vw; }
+  .nav-left { min-width: 0; flex-shrink: 1; gap: 8px; }
+  /* the nav is packed on phones: the status pill collapses to its dot (color
+     still says live/loading/error, tap still refreshes) and the auth control
+     never shrinks — otherwise התחברות overlaps the links strip */
+  .pill-status { padding: 7px; }
+  .pill-status .pill-text { display: none; }
+  .nav-login { flex: none; padding: 7px 14px; font-size: 13px; }
+  .nav-avatar { width: 34px; height: 34px; }
   .page-title { font-size: 26px; }
   .ob-title { font-size: 38px; }
   .ob-sub { font-size: 16px; }
