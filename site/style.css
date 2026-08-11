@@ -397,6 +397,13 @@ html.a11y-noanim *, html.a11y-noanim *::before, html.a11y-noanim *::after {
 .pop-block .block-kicker { margin-bottom: 12px; }
 .cat-chips { margin-bottom: 14px; }
 .cat-chips .chip { padding: 7px 14px; font-size: 13px; }
+.cat-letters { display: flex; flex-wrap: wrap; gap: 6px; margin: 10px 0 14px; }
+.cat-letters .chip { padding: 5px 0; font-size: 13px; min-width: 34px; text-align: center; }
+.cat-letters .chip:first-child { padding: 5px 12px; }
+.cat-pager {
+  display: flex; align-items: center; justify-content: center; gap: 16px;
+  margin-top: 18px;
+}
 .pop-block .btn-outline.block { margin-top: 14px; }
 .pop-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
 .pop-tile {

@@ -169,7 +169,8 @@ const state = {
   address: '',
   categories: [],
   catFilter: null,            // category index being browsed, null = popular
-  catLimit: 12,
+  catPage: 0,                 // category browsing is paged (24/page), sorted א״ב
+  catLetter: null,            // optional first-letter filter within the category
   profile: { name: '', email: '', phone: '' },
   saved: [],
   orders: [],
@@ -2053,10 +2054,22 @@ function popTileH(pr) {
       </div>
     </div>`;
 }
+/* category browsing is alphabetical; the sort key skips leading digits/sizes
+   ("1.5% חלב…" files under ח), and the same key drives the letter index */
+const CAT_PAGE_SIZE = 24;
+function catSortKey(pr) {
+  const k = stripQuotes(pr.nLow).replace(/^[^א-ת]*/, '');
+  return k || pr.nLow;
+}
+function catLetterOf(pr) {
+  const ch = catSortKey(pr).charAt(0);
+  return /[א-ת]/.test(ch) ? ch : '#';
+}
 function categoryProducts(ci) {
   return state.products
     .filter(pr => pr.c === ci)
-    .sort((a, b) => avail(b) - avail(a) || minActivePrice(a, true) - minActivePrice(b, true));
+    .sort((a, b) => catSortKey(a).localeCompare(catSortKey(b), 'he') ||
+      a.nLow.localeCompare(b.nLow, 'he'));
 }
 function buildH() {
   const t = computeRows();
@@ -2065,16 +2078,35 @@ function buildH() {
     CATEGORY_ORDER.filter(ci => state.categories[ci]).map(ci =>
       `<button class="chip${state.catFilter === ci ? ' on' : ''}" data-action="category" data-cat="${ci}">${esc(state.categories[ci])}</button>`).join('') +
     `</div>`;
-  let gridTitle, gridTiles, moreBtn = '';
+  let gridTitle, gridTiles, letterRow = '', pagerH = '';
   if (state.catFilter == null) {
     gridTitle = 'מוצרים נפוצים';
     gridTiles = state.popular.map(popTileH).join('');
   } else {
     const all = categoryProducts(state.catFilter);
-    gridTitle = `${state.categories[state.catFilter]} · ${all.length.toLocaleString('he-IL')} מוצרים`;
-    gridTiles = all.slice(0, state.catLimit).map(popTileH).join('');
-    if (all.length > state.catLimit) {
-      moreBtn = `<button class="btn-outline block" data-action="cat-more">הצגת עוד מוצרים (${(all.length - state.catLimit).toLocaleString('he-IL')} נוספים)</button>`;
+    const filtered = state.catLetter ? all.filter(pr => catLetterOf(pr) === state.catLetter) : all;
+    const pages = Math.max(1, Math.ceil(filtered.length / CAT_PAGE_SIZE));
+    const page = Math.min(state.catPage, pages - 1);
+    state.catPage = page;                        // clamp after letter/category switches
+    gridTiles = filtered.slice(page * CAT_PAGE_SIZE, (page + 1) * CAT_PAGE_SIZE)
+      .map(popTileH).join('');
+    gridTitle = `${state.categories[state.catFilter]} · ` +
+      (state.catLetter ? `האות ${state.catLetter} · ` : '') +
+      `${filtered.length.toLocaleString('he-IL')} מוצרים · לפי א״ב`;
+    if (all.length > CAT_PAGE_SIZE) {
+      const letters = [...new Set(all.map(catLetterOf))].sort((a, b) => a.localeCompare(b, 'he'));
+      letterRow = `<div class="cat-letters">
+        <button class="chip${!state.catLetter ? ' on' : ''}" data-action="cat-letter" data-letter="">הכל</button>` +
+        letters.map(L => `<button class="chip${state.catLetter === L ? ' on' : ''}"
+          data-action="cat-letter" data-letter="${esc(L)}">${esc(L)}</button>`).join('') +
+      `</div>`;
+    }
+    if (pages > 1) {
+      pagerH = `<div class="cat-pager">
+        <button class="btn-outline sm" data-action="cat-page" data-dir="-1"${page === 0 ? ' disabled' : ''}>הקודם</button>
+        <span class="muted sm">עמוד ${page + 1} מתוך ${pages.toLocaleString('he-IL')}</span>
+        <button class="btn-outline sm" data-action="cat-page" data-dir="1"${page >= pages - 1 ? ' disabled' : ''}>הבא</button>
+      </div>`;
     }
   }
   const popular = gridTiles;
@@ -2124,8 +2156,9 @@ function buildH() {
         <div class="pop-block">
           ${catChips}
           <div class="block-kicker">${esc(gridTitle)}</div>
+          ${letterRow}
           <div class="pop-grid">${popular}</div>
-          ${moreBtn}
+          ${pagerH}
         </div>
         ${noteH()}
         <div class="card list-card">
@@ -3082,10 +3115,22 @@ document.addEventListener('click', e => {
     case 'category': {
       const v = btn.dataset.cat;
       state.catFilter = v === '' ? null : parseInt(v, 10);
-      state.catLimit = 12;
+      state.catPage = 0;
+      state.catLetter = null;
       render(); break;
     }
-    case 'cat-more': state.catLimit += 12; render(); break;
+    case 'cat-letter':
+      state.catLetter = btn.dataset.letter || null;
+      state.catPage = 0;
+      render(); break;
+    case 'cat-page': {
+      state.catPage = Math.max(0, state.catPage + (+btn.dataset.dir));
+      render();
+      // back to the top of the grid — the new page starts there
+      const grid = document.querySelector('.pop-block');
+      if (grid) window.scrollTo({ top: Math.max(0, grid.offsetTop - 70) });
+      break;
+    }
     case 'pc-scroll': {
       const track = btn.closest('.promo-carousel')?.querySelector('.pc-track');
       if (track) {
