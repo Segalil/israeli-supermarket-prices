@@ -811,6 +811,14 @@ html.a11y-noanim .ob-cta-main { animation: none; }
   .saved-grid { grid-template-columns: repeat(2, 1fr); }
   .ob { grid-template-columns: 1fr; gap: 40px; padding: 48px 24px 64px; }
   .ob-hero { height: 420px; max-width: 520px; }
+  /* Once the hero stacks, the ~390px flowchart sits between the headline and the
+     primary CTA and pushes it past the fold (it was more than a full screen down
+     on a phone). Stacked layouts put the form — and its CTA — right under the
+     headline; the "how it works" explanation follows for whoever scrolls. */
+  .ob-main { display: flex; flex-direction: column; }
+  .ob-badge { align-self: flex-start; }   /* else the flex item stretches wide */
+  .ob-form { order: 1; margin-bottom: 40px; }
+  .ob-flow { order: 2; margin-bottom: 0; }
   .auth { grid-template-columns: 1fr; }
   .auth-aside { display: none; }
 }
