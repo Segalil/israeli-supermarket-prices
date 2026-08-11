@@ -156,6 +156,72 @@ def test_same_size_written_differently_still_merges():
     assert len(data["products"]) == 1
 
 
+def _avocado_rows():
+    """Four chains listing loose avocado per kilo — the merged produce case."""
+    return [
+        row("שופרסל", "", "אבוקדו", "15.90", quantity="1", unit_qty="קילוגרם"),
+        row("רמי לוי", "135", "אבוקדו", "13.90", quantity="1", unit_qty="קילוגרם"),
+        row("יינות ביתן / קרפור", "1572", "אבוקדו", "14.50", quantity="1", unit_qty="קילוגרם"),
+        row("יוחננוף", "606", "אבוקדו", "16.90", quantity="1", unit_qty="קילוגרם"),
+    ]
+
+
+def _merged_chain_count(data, name):
+    best = 0
+    for p in data["products"]:
+        if p[1].strip() == name and (p[5] or []):
+            best = max(best, sum(1 for v in p[4] if v is not None))
+    return best
+
+
+def test_new_record_joins_an_existing_merged_group():
+    """A record arriving tomorrow must fall into the group, however it is spelled."""
+    variants = {
+        "real EAN": row("ויקטורי", "7290009005615", "אבוקדו", "12.90",
+                        quantity="1", unit_qty="קילוגרם"),
+        "internal PLU": row("ויקטורי", "77", "אבוקדו", "12.90",
+                            quantity="1", unit_qty="קילוגרם"),
+        'unit as ק"ג': row("ויקטורי", "77", "אבוקדו", "12.90",
+                           quantity="1", unit_qty='ק"ג'),
+        "unit as 1000 גרם": row("ויקטורי", "77", "אבוקדו", "12.90",
+                                quantity="1000", unit_qty="גרם"),
+        "padded name": row("ויקטורי", "77", "  אבוקדו  ", "12.90",
+                           quantity="1", unit_qty="קילוגרם"),
+        "retailer suffix in name": row("ויקטורי", "77", "אבוקדו ויקטורי", "12.90",
+                                       quantity="1", unit_qty="קילוגרם"),
+    }
+    for label, extra in variants.items():
+        data = build_site_data(_avocado_rows() + [extra])
+        assert _merged_chain_count(data, "אבוקדו") == 5, f"{label} did not join the group"
+
+
+def test_new_record_stays_out_when_it_is_a_different_product():
+    per_unit = row("ויקטורי", "77", "אבוקדו", "12.90", quantity="1", unit_qty="יחידות")
+    data = build_site_data(_avocado_rows() + [per_unit])
+    assert _merged_chain_count(data, "אבוקדו") == 4      # per-piece is not per-kilo
+    other = row("ויקטורי", "77", "אבוקדו האס", "12.90", quantity="1", unit_qty="קילוגרם")
+    data = build_site_data(_avocado_rows() + [other])
+    assert _merged_chain_count(data, "אבוקדו") == 4
+
+
+def test_one_chains_duplicate_does_not_break_everyone_elses_merge():
+    """Graceful degradation: only the contested chain drops out of the group.
+
+    Chains do publish two rows for one name+size, and refusing the whole bucket
+    on that used to collapse the group back into separate single-chain entries.
+    """
+    dup = row("שופרסל", "999", "אבוקדו", "17.90", quantity="1", unit_qty="קילוגרם")
+    data = build_site_data(_avocado_rows() + [dup])
+    assert _merged_chain_count(data, "אבוקדו") == 3, "the other three chains must still merge"
+    # שופרסל's two SKUs remain separate, and no source key is lost
+    keys = set()
+    for p in data["products"]:
+        if not p[0].startswith("n:"):
+            keys.add(p[0])
+        keys.update(p[5] or [])
+    assert "שופרסל:999" in keys and "שופרסל:אבוקדו" in keys
+
+
 def test_consolidates_same_name_different_barcodes():
     data = build_site_data([
         row("שופרסל", "7290000000001", "חלב תנובה 3% 1 ליטר", "6.90"),

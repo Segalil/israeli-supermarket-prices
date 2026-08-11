@@ -366,16 +366,22 @@ def consolidate_by_name(products):
         # the size is part of the bucket, so it has to be part of the key too —
         # otherwise the 400g and the 700g bucket of one name overwrite each other
         merged_key = "n:{}|{}{}".format(sig, usig[0], usig[1])
-        chains_seen = set()
-        conflict = False
+
+        # A chain listing this name+size twice has two genuinely different SKUs
+        # (same name, same size, different price happens across the catalogue),
+        # so we cannot pick one to stand for that chain. Drop only the contested
+        # chains and merge what is left: one retailer's duplicate row must not
+        # cost every OTHER retailer its merge, which is what refusing the whole
+        # bucket used to do.
+        per_chain = {}
         for k in keys:
-            pchains = set(products[k]["p"])
-            if chains_seen & pchains:
-                conflict = True
-                break
-            chains_seen |= pchains
-        if conflict:
-            continue
+            for chain in products[k]["p"]:
+                per_chain[chain] = per_chain.get(chain, 0) + 1
+        contested = {c for c, n in per_chain.items() if n > 1}
+        if contested:
+            keys = [k for k in keys if not (set(products[k]["p"]) & contested)]
+            if len(keys) < 2:
+                continue
         members = [products[k] for k in keys]
         combined = {
             "n": max((m["n"] for m in members), key=len),
