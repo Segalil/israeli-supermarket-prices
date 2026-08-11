@@ -2855,6 +2855,9 @@ function bindScreen() {
       timer = setTimeout(() => renderSuggest(si.value), 120);
     });
     si.addEventListener('keydown', e => { if (e.key === 'Escape') hideSuggest(); });
+    // the phone path collapses the list after each pick, so tapping the field
+    // again has to bring the same results back
+    si.addEventListener('focus', () => renderSuggest(si.value));
   }
   const sv = $('#rcptSaveList');
   if (sv) sv.addEventListener('change', () => { state.receipt.saveAsList = sv.checked; });
@@ -2929,6 +2932,8 @@ function bindField(sel, save) {
 }
 
 function hideSuggest() { const b = $('#suggestBox'); if (b) { b.hidden = true; b.innerHTML = ''; } }
+/* Phone layout — same 680px breakpoint the stylesheet switches the app at. */
+function isPhoneLayout() { return matchMedia('(max-width: 680px)').matches; }
 function renderSuggest(query) {
   const box = $('#suggestBox');
   if (!box) return;
@@ -3134,7 +3139,18 @@ document.addEventListener('click', e => {
       const v = si ? si.value : '';
       render();
       const si2 = $('#searchInput');
-      if (si2) { si2.value = v; si2.focus(); renderSuggest(v); }
+      if (!si2) break;
+      si2.value = v;
+      if (isPhoneLayout()) {
+        // On a phone the dropdown plus the soft keyboard cover the list, so the
+        // product you just added is invisible and there is no feedback. Collapse
+        // and release focus; tapping the field reopens the same results.
+        hideSuggest();
+        si2.blur();
+      } else {
+        si2.focus();          // desktop keeps the list up for a quick second pick
+        renderSuggest(v);
+      }
       break;
     }
     case 'inc': bumpItem(key, 1); render(); break;
