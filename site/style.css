@@ -694,8 +694,8 @@ html.a11y-noanim *, html.a11y-noanim *::before, html.a11y-noanim *::after {
 .rcpt-ctas.center { justify-content: center; margin-top: 0; }
 
 /* ---------- recipe → list ---------- */
-.import-ctas { display: flex; gap: 10px; }
-.import-ctas .rcpt-cta { flex: 1; }
+.import-ctas { display: flex; gap: 10px; margin: 12px 0 26px; }
+.import-ctas .rcpt-cta { flex: 1; margin-top: 0; }
 .rcp-input-card { padding: 24px; }
 .rcp-input-card h3 { font-size: 21px; margin-bottom: 6px; }
 .rcp-url-row { display: flex; gap: 10px; margin: 12px 0 4px; }
