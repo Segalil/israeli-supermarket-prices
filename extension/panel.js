@@ -19,7 +19,13 @@
     idx: progress.id === handoff.id ? (progress.idx || 0) : 0,
     done: progress.id === handoff.id ? (progress.done || {}) : {},
     auto: progress.id === handoff.id ? !!progress.auto : false,
+    listOpen: false,
   };
+  // items the chain's catalog doesn't carry ride along for a manual attempt —
+  // the auto walk skips them up front
+  handoff.items.forEach((it, i) => {
+    if (it.missing && state.done[i] === undefined) state.done[i] = 'skip';
+  });
 
   const save = () => chrome.storage.local.set({
     progress: { id: handoff.id, idx: state.idx, done: state.done, auto: state.auto },
@@ -27,6 +33,21 @@
 
   const esc = s => String(s ?? '').replace(/[&<>"']/g,
     ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
+
+  function copyText(text) {
+    const fallback = () => {
+      const ta = document.createElement('textarea');
+      ta.value = text; document.body.appendChild(ta); ta.select();
+      document.execCommand('copy'); ta.remove();
+    };
+    try { navigator.clipboard.writeText(text).catch(fallback); }
+    catch (_) { fallback(); }
+  }
+  function itemListText() {
+    return handoff.items.map((it, i) =>
+      `${i + 1}. ${it.name} — ${it.ean ? 'מק"ט ' + it.ean : 'ללא מק"ט'} — ×${it.qty}` +
+      (it.missing ? ' (לא נמצא בקטלוג הרשת)' : '')).join('\n');
+  }
 
   /* ---------- UI ---------- */
   const root = document.createElement('div');
@@ -65,6 +86,24 @@
         <div class="slim-list">${handoff.items.map((it, i) => `
           <span class="slim-dot${state.done[i] ? ' ok' : ''}${i === state.idx ? ' cur' : ''}"
             title="${esc(it.name)}"></span>`).join('')}</div>`}
+      <button class="slim-btn subtle slim-toggle" data-act="toggle-list">
+        ${state.listOpen ? 'הסתרת הרשימה' : `📋 כל הרשימה — שם, מק״ט וכמות (${total})`}</button>
+      ${state.listOpen ? `
+        <div class="slim-rows">${handoff.items.map((it, i) => `
+          <div class="slim-row${state.done[i] === true ? ' ok' : ''}${it.missing ? ' miss' : ''}">
+            <span class="slim-row-qty">×${it.qty}</span>
+            <span class="slim-row-main">
+              <span class="slim-row-name">${esc(it.name)}</span>
+              <span class="slim-row-code">${it.missing
+                ? 'לא נמצא בקטלוג הרשת — שווה לנסות ידנית'
+                : it.ean ? `מק"ט ${esc(it.ean)}` : 'ללא מק"ט — חיפוש לפי שם'}</span>
+            </span>
+            <button class="slim-mini" data-act="row-copy" data-i="${i}"
+              title="העתקת המק&quot;ט (או השם) להדבקה בחיפוש">⧉</button>
+            <button class="slim-mini" data-act="row-search" data-i="${i}"
+              title="פתיחת הפריט בחיפוש האתר">🔎</button>
+          </div>`).join('')}</div>
+        <button class="slim-btn subtle" data-act="copy-all">⧉ העתקת כל הרשימה</button>` : ''}
     `;
   }
 
@@ -167,10 +206,31 @@
         if (cfg.isSearchPage()) tryAutoAdd();
         else goSearch(current());
       }
+    } else if (act === 'toggle-list') {
+      state.listOpen = !state.listOpen;
+      render();
+    } else if (act === 'row-copy') {
+      const it = handoff.items[+btn.dataset.i];
+      if (it) {
+        copyText(it.ean || it.name);
+        btn.textContent = '✓';
+        setTimeout(() => { btn.textContent = '⧉'; }, 1200);
+      }
+    } else if (act === 'row-search') {
+      const i = +btn.dataset.i;
+      if (handoff.items[i]) {
+        state.idx = i; state.auto = false; save();
+        goSearch(handoff.items[i]);
+      }
+    } else if (act === 'copy-all') {
+      copyText(itemListText());
+      btn.textContent = '✓ הועתק — הדביקו בפנקס או עברו פריט-פריט';
+      setTimeout(() => { btn.textContent = '⧉ העתקת כל הרשימה'; }, 2200);
     }
   });
 
-  render();
+  // resume on a pending item (missing-at-chain items arrive pre-skipped)
+  if (state.done[state.idx]) advance(); else render();
   /* arriving on a search page mid-run (after goSearch navigation) */
   if (state.auto && cfg.isSearchPage() && doneCount() < handoff.items.length) {
     tryAutoAdd();

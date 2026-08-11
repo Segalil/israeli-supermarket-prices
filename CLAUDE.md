@@ -160,6 +160,17 @@ Downloading is done via the il-supermarket-scraper library (PyPI).
   a broken app. Content rule: the guides never print an invented price, percentage
   or statistic, and never crown a chain "the cheapest" — the delivery figures they
   quote come from CHAIN_META and are labelled הערכה, matching the UI.
+- extension/ — MV3 Chrome extension ("ליםSlim — העברת סל לרשתות"): bridge.js
+  (on slim-super.com + localhost) copies the site's slim-handoff-v1 payload
+  into chrome.storage; panel.js (on 6 chain sites, per-chain selector adapters
+  in chains/*.js) walks the list — barcode-first search, auto-add with qty,
+  verify, assisted "הוספתי" fallback — and shows a full manual-fallback list
+  (name + מק"ט + qty, per-row copy/search, copy-all). The handoff payload also
+  carries items missing from the chain's catalog (missing:true — pre-skipped
+  by the auto walk, listed for a manual try). harness.html runs the real
+  bridge+panel against stubbed chrome.* without installing (see README).
+  extension.zip is the store artifact — rebuild after changes (zip -r … see
+  git log); store re-upload is manual.
 - tests/test_parser.py, tests/test_site_data.py, tests/test_seo.py — offline tests
   (fixtures in samples/ + the checked-in snapshot in data/).
 - .github/workflows/daily-prices.yml — daily run (cron 05:00 UTC = 08:00 Israel)

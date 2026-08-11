@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<title>ליםSlim extension harness</title>
+<!-- Functional harness for bridge.js + panel.js WITHOUT loading the extension:
+     serve this folder (e.g. python3 -m http.server -d extension 8900) and open
+     /harness.html. chrome.* is stubbed, the chain adapter is fake, and
+     "navigation" is hash-only so the page survives goSearch. Exercises:
+     capture, panel render, auto-add with qty, missing-item pre-skip, the full
+     name/מק"ט/qty list, per-row copy+search, copy-all. -->
+<style>
+  body { font-family: sans-serif; padding: 24px; background: #f7f4f1; }
+  .fake-tile { border: 1px solid #ccc; border-radius: 12px; padding: 16px; width: 260px; }
+</style>
+</head>
+<body>
+<h2>הדמיית אתר רשת — בדיקת התוסף</h2>
+<div class="fake-tile">
+  <div>מוצר בדף תוצאות חיפוש מדומה</div>
+  <button class="fake-add" onclick="window.__adds=(window.__adds||0)+1">הוספה לעגלה</button>
+  <input class="qty" type="number" value="1" style="width:60px">
+</div>
+
+<script>
+window.__store = {};
+window.chrome = {
+  storage: { local: {
+    get: keys => Promise.resolve(Object.fromEntries(
+      (Array.isArray(keys) ? keys : [keys])
+        .map(k => [k, window.__store[k]])
+        .filter(([, v]) => v !== undefined))),
+    set: obj => { Object.assign(window.__store, obj); return Promise.resolve(); },
+  } },
+  runtime: { getManifest: () => ({ version: 'harness' }) },
+};
+localStorage.setItem('slim-handoff-v1', JSON.stringify({
+  id: 'test-' + Date.now(), chain: 'שופרסל', date: '2026-08-11', total: 123,
+  items: [
+    { name: 'חלב תנובה 3% 1 ליטר', qty: 2, ean: '7290000042435' },
+    { name: 'לחם אחיד פרוס', qty: 1, ean: '7290000123456' },
+    { name: 'פטרוזיליה צרור', qty: 1, ean: null },
+    { name: 'מוצר שאין ברשת הזו', qty: 3, ean: '7290999999999', missing: true },
+  ],
+}));
+</script>
+<script src="bridge.js"></script>
+<script>
+window.SLIM_CHAIN = {
+  label: 'שופרסל',
+  barcodeSearch: true,
+  searchUrl: q => '#q=' + encodeURIComponent(q),
+  isSearchPage: () => true,
+  tileSelectors: ['.fake-tile'],
+  addSelectors: ['.fake-add'],
+  verifySelectors: ['input.qty'],
+};
+</script>
+<link rel="stylesheet" href="panel.css">
+<script src="panel.js"></script>
+</body>
+</html>

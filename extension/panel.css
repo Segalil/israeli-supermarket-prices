@@ -42,3 +42,32 @@
 #slim-panel .slim-dot.ok { background: #7da78c; }
 #slim-panel .slim-dot.cur { outline: 2px solid #35858e; outline-offset: 1px; }
 #slim-panel .slim-done { font-weight: 700; margin: 8px 0 12px; }
+
+/* full-list fallback: name + מק"ט + qty, for manual insertion */
+#slim-panel .slim-toggle { display: block; width: 100%; margin-top: 10px; text-align: center; }
+#slim-panel .slim-rows {
+  max-height: 240px; overflow-y: auto; margin-top: 8px;
+  border-top: 1px solid #eae4e0;
+}
+#slim-panel .slim-row {
+  display: flex; align-items: center; gap: 8px;
+  padding: 7px 2px; border-bottom: 1px solid rgba(82, 70, 70, .08);
+}
+#slim-panel .slim-row.ok .slim-row-name { color: #a3958f; text-decoration: line-through; }
+#slim-panel .slim-row.miss .slim-row-code { color: #a75424; }
+#slim-panel .slim-row-qty {
+  flex: none; background: #e8f0ea; color: #256a73; border-radius: 999px;
+  padding: 0 8px; font-size: 12px; font-weight: 700;
+}
+#slim-panel .slim-row-main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+#slim-panel .slim-row-name {
+  font-size: 12.5px; font-weight: 600;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+#slim-panel .slim-row-code { font-size: 11px; color: #6a5e5b; direction: ltr; text-align: right; }
+#slim-panel .slim-mini {
+  flex: none; border: 1px solid #eae4e0; background: none; border-radius: 8px;
+  width: 26px; height: 26px; cursor: pointer; font-size: 12px; color: #256a73;
+  display: flex; align-items: center; justify-content: center; padding: 0;
+}
+#slim-panel .slim-mini:hover { background: #e8f0ea; border-color: #9fd0d6; }

@@ -3015,6 +3015,10 @@ function doHandoff(label) {
       items: [
         ...lines.map(({ pr, qty }) => ({ name: pr.n, qty, ean: productEan(pr) })),
         ...subsAccepted.map(pr => ({ name: pr.n, qty: 1, ean: productEan(pr) })),
+        // the rest of the list too — not in this chain's catalog, but the
+        // extension shows them for a manual attempt (data can lag the shelf)
+        ...r.missing.map(pr => ({ name: pr.n, qty: state.list.get(pr.k) || 1,
+          ean: productEan(pr), missing: true })),
       ],
     };
     localStorage.setItem('slim-handoff-v1', JSON.stringify(payload));
