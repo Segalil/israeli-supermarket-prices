@@ -1880,7 +1880,6 @@ function onboardingH() {
       <div class="ob-flow" aria-label="איך זה עובד">
         <svg class="ob-river" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
           <path d="M80 -2 C 86 14, 30 16, 26 34 C 22 50, 74 48, 77 66 C 80 82, 62 88, 55 99"/>
-          <path class="ob-river-head" d="M44 91 L55 101 L67 90"/>
         </svg>
         <div class="ob-step"><span class="ob-dot">🛒</span>
           <div class="ob-step-t"><b>בונים רשימה אחת</b>

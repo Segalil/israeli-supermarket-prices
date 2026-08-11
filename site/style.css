@@ -309,9 +309,6 @@ html.a11y-noanim *, html.a11y-noanim *::before, html.a11y-noanim *::after {
   fill: none; stroke: var(--brand); stroke-width: 44px; stroke-linecap: round;
   vector-effect: non-scaling-stroke; opacity: .2;
 }
-.ob-river .ob-river-head {
-  stroke-width: 12px; stroke-linejoin: round; opacity: .45;
-}
 .ob-step {
   position: relative; z-index: 1; display: flex; align-items: center; gap: 16px;
   background: var(--surface); border-radius: var(--radius-sm);
