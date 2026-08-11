@@ -41,7 +41,25 @@ Downloading is done via the il-supermarket-scraper library (PyPI).
   * consolidate_by_name — the cross-chain consolidation model: order-independent
     token signature ("חלב תנובה 3%" == "3% חלב תנובה") merges products that do
     NOT share a chain (same-chain twins are different SKUs); original keys kept
-    as aliases so saved lists survive,
+    as aliases so saved lists survive. THE ALIASES ARE LOAD-BEARING: the client
+    derives each product's מק"ט list from its key + aliases (see loadData), so a
+    merge must never drop them or barcode search and receipt scanning lose codes.
+    Merging is bucketed by (name signature, unit_signature) — size is part of
+    identity, so a 400g and a 700g listing of one name stay separate, and the
+    merged key carries the size ("n:<sig>|g700.0") so two sizes cannot collide.
+    unit_signature folds equivalent spellings AND scales ('1 ק"ג' == '1 קילוגרם'
+    == '1000 גרם'); name_signature folds measurement WORDS inside the name
+    ("כוסמת 500 ג" == "כוסמת 500 גרם") but never descriptive ones, so
+    "עוגת שמרים" and "עוגת שמרים במילוי" stay apart. A one-word name is a weak
+    key and merges only for loose produce (_is_loose_produce_unit: sold per piece
+    or per >=1kg) — that is what lets "אבוקדו" from four chains become one
+    comparable row, while a bare brand like 'DOVE 150 מ"ל' never collapses.
+    strip_chain_name drops the retailer's own name from a TRAILING position
+    ("עגבניות שרי כתום רמי לוי"), which both de-noises the UI and unblocks the
+    merge. NOTE: ~70% of the catalogue is priced in a single chain, so the list
+    still looks repetitive; that long tail is genuinely distinct SKUs, not a
+    consolidation bug — fixing the *perception* is a UI ranking job, not a
+    merging one,
   * attach_promos — one promo per (product, chain) as [unitPrice|None, desc,
     flags, minQty] (flags bitmask: 1 club / 2 coupon / 4 min-qty>1); expired
     promos dropped against the snapshot date. DiscountedPrice for min-qty

@@ -18,6 +18,8 @@ from israeli_prices.basket import (
     format_unit,
     load_snapshot_rows,
     name_signature,
+    strip_chain_name,
+    unit_signature,
     snapshot_date,
     write_site_data,
 )
@@ -86,7 +88,72 @@ def test_duplicate_rows_keep_min_price():
 def test_name_signature_order_independent():
     assert name_signature("חלב תנובה 3%") == name_signature("3% חלב תנובה")
     assert name_signature("חלב תנובה 3%") != name_signature("חלב תנובה 1%")
-    assert name_signature("חלב") is None          # single token — unsafe to merge
+    # a single token IS a signature now; whether it may merge is decided at
+    # consolidation time by the unit (see the loose-produce tests below)
+    assert name_signature("חלב") == "חלב"
+    assert name_signature("  ") is None
+
+
+def test_unit_signature_normalizes_equivalent_sizes():
+    assert unit_signature('1 ק"ג') == unit_signature("1 קילוגרם") == ("g", 1000.0)
+    assert unit_signature("1000 גרם") == ("g", 1000.0)          # same size, other spelling
+    assert unit_signature("1.2 קילוגרם") == unit_signature("1200 גרם")
+    assert unit_signature("1 ליטר") == unit_signature('1000 מ"ל') == ("ml", 1000.0)
+    assert unit_signature("1 יחידות") == unit_signature("1 יח'") == ("unit", 1.0)
+    assert unit_signature("500 גרם") != unit_signature("1 קילוגרם")
+    assert unit_signature("0 יחידות") is None                   # no size information
+    assert unit_signature("") is None
+
+
+def test_strip_chain_name_only_at_the_end():
+    assert strip_chain_name("עגבניות שרי כתום רמי לוי", "רמי לוי") == "עגבניות שרי כתום"
+    assert strip_chain_name("אבוקדו מוכן לאכילה 400 ג רמי לוי", "רמי לוי") == \
+        "אבוקדו מוכן לאכילה 400 ג"
+    # a composite chain label strips either half
+    assert strip_chain_name("במבה קרפור", "יינות ביתן / קרפור") == "במבה"
+    # mid-name occurrences are left alone, and a name that IS the chain survives
+    assert strip_chain_name("שופרסל טעים במיוחד", "שופרסל") == "שופרסל טעים במיוחד"
+    assert strip_chain_name("רמי לוי", "רמי לוי") == "רמי לוי"
+
+
+def test_loose_produce_merges_on_a_single_word_name():
+    # the same avocado, priced per kilo, listed by each chain under its own code
+    data = build_site_data([
+        row("שופרסל", "", "אבוקדו", "12.90", quantity="1", unit_qty="קילוגרם"),
+        row("רמי לוי", "135", "אבוקדו", "11.50", quantity="1", unit_qty='ק"ג'),
+        row("יוחננוף", "606", "אבוקדו", "13.90", quantity="1", unit_qty="קילוגרם"),
+    ])
+    assert len(data["products"]) == 1
+    key, name, unit, brand, prices, aliases, promos, cat = data["products"][0]
+    assert prices == [12.90, 11.50, 13.90]
+    assert len(aliases) == 3            # every original key kept -> מק"ט lookups survive
+
+
+def test_single_word_packaged_item_does_not_merge():
+    # a bare brand name on a packaged size could be any of that brand's products
+    data = build_site_data([
+        row("שופרסל", "8720181277771", "DOVE", "18.90", quantity="150",
+            unit_qty="מיליליטר"),
+        row("רמי לוי", "8909106012721", "DOVE", "16.90", quantity="150",
+            unit_qty="מיליליטר"),
+    ])
+    assert len(data["products"]) == 2
+
+
+def test_same_name_different_sizes_stay_separate():
+    data = build_site_data([
+        row("שופרסל", "1", "עגבניות שרי לובלו", "8.90", quantity="400", unit_qty="גרם"),
+        row("רמי לוי", "2", "עגבניות שרי לובלו", "12.90", quantity="700", unit_qty="גרם"),
+    ])
+    assert len(data["products"]) == 2, "400g and 700g are different products"
+
+
+def test_same_size_written_differently_still_merges():
+    data = build_site_data([
+        row("שופרסל", "1", "תפוחי אדמה שקית", "9.90", quantity="1", unit_qty="קילוגרם"),
+        row("רמי לוי", "2", "תפוחי אדמה שקית", "8.90", quantity="1000", unit_qty="גרם"),
+    ])
+    assert len(data["products"]) == 1
 
 
 def test_consolidates_same_name_different_barcodes():

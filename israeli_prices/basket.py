@@ -84,6 +84,61 @@ def clean_name(name):
     return cleaned or (name or "").strip()
 
 
+def strip_chain_name(name, chain):
+    """Drop the retailer's own name from a product name.
+
+    Chains tag their private/loose items with their brand ("עגבניות שרי כתום
+    רמי לוי"), which blocks the cross-chain name merge and reads as noise in a
+    UI that already shows the chain. Only a trailing occurrence is removed, so
+    a genuine brand mid-name survives.
+    """
+    cleaned = clean_name(name)
+    parts = [p.strip() for p in (chain or "").split("/") if p.strip()]
+    for part in sorted(parts, key=len, reverse=True):
+        if len(part) < 3:
+            continue
+        if cleaned.endswith(" " + part):
+            trimmed = cleaned[: -len(part)].strip()
+            if len(trimmed.split()) >= 1 and trimmed:
+                cleaned = trimmed
+    return cleaned or clean_name(name)
+
+
+# Package size in comparable terms: "1 ק\"ג", "1 קילוגרם" and "1000 גרם" are the
+# same size and must land in the same merge bucket. ml is checked before ליטר
+# because "מיליליטר" contains it, and ק"ג before גרם for the same reason.
+_UNIT_KINDS = (
+    (re.compile(r'ק"?ג\b|קילוגרם|קילו\b'), "g", 1000.0),
+    (re.compile(r'מ"?ל\b|מיליליטר'), "ml", 1.0),
+    (re.compile(r"ליטר|\bל'?\b"), "ml", 1000.0),
+    (re.compile(r"גרם|\bגר'?\b|\bג'?\b"), "g", 1.0),
+    (re.compile(r"יחיד|\bיח'?\b|\bקרטון\b|\bמארז\b"), "unit", 1.0),
+)
+_QTY_RE = re.compile(r"[\d.]+")
+
+
+def unit_signature(unit):
+    """Canonical (kind, amount) for a display unit, or None when unrecognised.
+
+    Returns e.g. ('g', 1000.0) for both '1 ק"ג' and '1000 גרם'. None means the
+    unit carries no comparable size, and callers must not merge on it.
+    """
+    text = (unit or "").strip()
+    if not text:
+        return None
+    m = _QTY_RE.search(text)
+    try:
+        amount = float(m.group()) if m else 1.0
+    except ValueError:
+        amount = 1.0
+    if amount <= 0:
+        return None                       # "0 יחידות" tells us nothing
+    for pattern, kind, factor in _UNIT_KINDS:
+        if pattern.search(text):
+            return kind, round(amount * factor, 3)
+    return None
+
+
 def barcode_key(barcode):
     """Cross-chain merge key for a real (EAN-like) barcode, else None.
 
@@ -242,18 +297,43 @@ def classify_category(name):
 
 _SIG_STRIP_RE = re.compile(r"[^\w%]+", re.UNICODE)
 
+# Measurement words inside a NAME, folded to one spelling so that
+# "כוסמת 500 ג" and "כוסמת 500 גרם" reach the same signature. Only the unit word
+# is folded — a name that differs by a real descriptive word ("עוגת שמרים" vs
+# "עוגת שמרים במילוי") still has a different signature and will not merge.
+_SIG_UNIT_WORDS = {
+    "גרם": "g", "גר": "g", "ג": "g", "גרמים": "g",
+    "קג": "kg", "קילוגרם": "kg", "קילו": "kg", "קילוגרמים": "kg",
+    "מל": "ml", "מיליליטר": "ml",
+    "ל": "l", "ליטר": "l", "ליטרים": "l",
+    "יח": "un", "יחידה": "un", "יחידות": "un", "יחי": "un",
+}
+
 
 def name_signature(name):
     """Order-independent name signature: 'חלב תנובה 3%' == '3% חלב תנובה'.
 
     Lowercases, strips punctuation/geresh, sorts the tokens. Returns None for
-    names too short to be a safe merge key.
+    names too short to be a safe merge key. A single token is a weak key on its
+    own — consolidate_by_name accepts it only for loose produce, where it is
+    the norm ("אבוקדו", "אבטיח") — see _is_loose_produce_unit.
     """
     cleaned = _SIG_STRIP_RE.sub(" ", (name or "").lower().replace("'", " "))
-    tokens = sorted(t for t in cleaned.split() if t)
-    if len(tokens) < 2:
+    tokens = sorted(_SIG_UNIT_WORDS.get(t, t) for t in cleaned.split() if t)
+    if not tokens:
         return None
     return " ".join(tokens)
+
+
+def _is_loose_produce_unit(unit_sig):
+    """True for the by-weight / by-piece units loose produce is sold in.
+
+    Gates the single-word merge: 'אבוקדו' priced per kilo in four chains is one
+    product, while a one-word packaged name (a bare brand like 'DOVE 150 מ"ל')
+    could be any of that brand's items and must not collapse.
+    """
+    return bool(unit_sig) and (unit_sig[0] == "unit" or
+                               (unit_sig[0] == "g" and unit_sig[1] >= 1000))
 
 
 def consolidate_by_name(products):
@@ -265,16 +345,27 @@ def consolidate_by_name(products):
     members are priced in the same chain — same-chain twins are genuinely
     different SKUs. Original keys are kept as aliases so saved lists survive.
     """
-    by_sig = {}
+    by_bucket = {}
     for key, prod in products.items():
         sig = name_signature(prod["n"])
-        if sig:
-            by_sig.setdefault(sig, []).append(key)
+        if not sig:
+            continue
+        usig = unit_signature(prod.get("u"))
+        if len(sig.split()) < 2 and not _is_loose_produce_unit(usig):
+            continue                      # weak one-word key on a packaged item
+        # Size is part of identity: two chains listing "עגבניות שרי" at 460g and
+        # at 1kg are different products, so only same-size entries share a
+        # bucket. An unreadable unit buckets on its own raw text rather than
+        # merging blind.
+        by_bucket.setdefault((sig, usig or ("?", prod.get("u") or "")), []).append(key)
 
     merged = dict(products)
-    for sig, keys in by_sig.items():
+    for (sig, usig), keys in by_bucket.items():
         if len(keys) < 2:
             continue
+        # the size is part of the bucket, so it has to be part of the key too —
+        # otherwise the 400g and the 700g bucket of one name overwrite each other
+        merged_key = "n:{}|{}{}".format(sig, usig[0], usig[1])
         chains_seen = set()
         conflict = False
         for k in keys:
@@ -295,7 +386,7 @@ def consolidate_by_name(products):
         }
         for k in keys:
             merged.pop(k, None)
-        merged["n:" + sig] = combined
+        merged[merged_key] = combined
     return merged
 
 
@@ -399,7 +490,7 @@ def build_site_data(rows, date="", promo_rows=None):
     products = {}        # key -> {"n": name, "u": unit, "b": brand, "p": {chain: price}}
     for r in rows:
         chain = r.get("chain", "")
-        name = clean_name(r.get("item_name", ""))
+        name = strip_chain_name(r.get("item_name", ""), chain)
         price = _parse_price(r.get("price"))
         if not chain or not name or price is None:
             continue
