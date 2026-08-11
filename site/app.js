@@ -3109,15 +3109,18 @@ function nameTier(pr, term) {
 }
 /* Phone layout — same 680px breakpoint the stylesheet switches the app at. */
 function isPhoneLayout() { return matchMedia('(max-width: 680px)').matches; }
-function renderSuggest(query) {
-  const box = $('#suggestBox');
-  if (!box) return;
-  const q = query.trim().toLowerCase();
-  if (q.length < 2) { hideSuggest(); return; }
+/* Every catalogue match for a search-box query, best first, as
+   [score, product, codeHit, spread]. Split out from the rendering so the
+   ranking can be tested headlessly (tests/search_harness.js). */
+function suggestMatches(q) {
   const isCode = /^\d{3,}$/.test(q);
+  // Words of a multi-word query, matched individually and in any order below.
+  // "3% חלב תנובה" and "במבה אוסם" used to return nothing at all, because the
+  // query was only ever tested as one contiguous run of characters.
+  const terms = isCode ? [] : q.split(/\s+/).filter(Boolean);
   const scored = [];
   for (const pr of state.products) {
-    let score, codeHit = null;
+    let score, codeHit = null, spread = 0;
     if (isCode) {
       codeHit = pr.codes.find(c => c === q) ||
                 pr.codes.find(c => c.startsWith(q));
@@ -3126,13 +3129,37 @@ function renderSuggest(query) {
       else continue;
     } else {
       score = nameTier(pr, q);
-      if (score < 0) continue;
+      if (score < 0) {
+        // Every word has to land somewhere in the name — keywordScore reads the
+        // name only, so a brand never satisfies a word (with brands allowed,
+        // "קולה זירו מארז" answers with a Sprite whose brand is "קוקה קולה").
+        // Scored from 6 up, i.e. strictly below every contiguous match, so this
+        // can only ADD rows to what the search already returned.
+        if (terms.length < 2) continue;
+        let worst = 0;
+        for (const t of terms) {
+          const ts = keywordScore(pr, t);
+          if (ts < 0) { worst = -1; break; }
+          if (ts > worst) worst = ts;
+          spread += ts;
+        }
+        if (worst < 0) continue;
+        score = 6 + worst;
+      }
     }
-    scored.push([score, pr, codeHit]);
+    scored.push([score, pr, codeHit, spread]);
   }
-  scored.sort((a, b) => a[0] - b[0] || avail(b[1]) - avail(a[1]) ||
+  scored.sort((a, b) => a[0] - b[0] || a[3] - b[3] || avail(b[1]) - avail(a[1]) ||
     minActivePrice(a[1], true) - minActivePrice(b[1], true));
-  const top = scored.slice(0, 8);
+  return scored;
+}
+
+function renderSuggest(query) {
+  const box = $('#suggestBox');
+  if (!box) return;
+  const q = query.trim().toLowerCase();
+  if (q.length < 2) { hideSuggest(); return; }
+  const top = suggestMatches(q).slice(0, 8);
   if (!top.length) { box.innerHTML = '<div class="suggest-none">לא נמצאו מוצרים תואמים</div>'; box.hidden = false; return; }
   box.innerHTML = top.map(([, pr, codeHit]) => `
     <button class="suggest-row" data-action="add-search" data-key="${esc(pr.k)}">
