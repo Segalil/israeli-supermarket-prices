@@ -2055,8 +2055,9 @@ function popTileH(pr) {
     </div>`;
 }
 /* category browsing is alphabetical; the sort key skips leading digits/sizes
-   ("1.5% חלב…" files under ח), and the same key drives the letter index */
-const CAT_PAGE_SIZE = 24;
+   ("1.5% חלב…" files under ח), and the same key drives the letter index.
+   12 = three rows of the 4-column grid — keeps the page short. */
+const CAT_PAGE_SIZE = 12;
 function catSortKey(pr) {
   const k = stripQuotes(pr.nLow).replace(/^[^א-ת]*/, '');
   return k || pr.nLow;
