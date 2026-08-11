@@ -297,9 +297,21 @@ html.a11y-noanim *, html.a11y-noanim *::before, html.a11y-noanim *::after {
 }
 .ob-title { font-size: 56px; line-height: 1.1; margin: 0 0 18px; letter-spacing: -.01em; }
 
-/* "how it works" — vertical flowchart. Wide translucent arrows sweep in from
-   OUTSIDE the list, alternating right/left/right, sliding behind the cards. */
-.ob-flow { position: relative; display: flex; flex-direction: column; max-width: 480px; margin: 0 0 28px; }
+/* "how it works" — vertical flowchart. One wide translucent stream snakes
+   BEHIND the step cards (right→left→right) and exits as a down arrow toward
+   the form; the cards float on top of it. */
+.ob-flow { position: relative; display: flex; flex-direction: column; gap: 30px; max-width: 480px; margin: 0 0 42px; }
+.ob-river {
+  position: absolute; inset: -14px 0 -50px; width: 100%; height: calc(100% + 64px);
+  z-index: 0; overflow: visible; pointer-events: none;
+}
+.ob-river path {
+  fill: none; stroke: var(--brand); stroke-width: 44px; stroke-linecap: round;
+  vector-effect: non-scaling-stroke; opacity: .2;
+}
+.ob-river .ob-river-head {
+  stroke-width: 12px; stroke-linejoin: round; opacity: .45;
+}
 .ob-step {
   position: relative; z-index: 1; display: flex; align-items: center; gap: 16px;
   background: var(--surface); border-radius: var(--radius-sm);
@@ -313,11 +325,12 @@ html.a11y-noanim *, html.a11y-noanim *::before, html.a11y-noanim *::after {
 .ob-step-t { display: flex; flex-direction: column; gap: 2px; }
 .ob-step-t b { font-size: 19px; font-family: var(--font-display); font-weight: 400; }
 .ob-step-t span { font-size: 15px; color: var(--text-2); }
-.ob-curve { position: relative; z-index: 0; height: 80px; margin: -16px 0; pointer-events: none; }
-.ob-curve svg { position: absolute; top: 0; height: 100%; width: auto; color: var(--brand); opacity: .3; }
-.ob-curve.r svg { right: -38px; }        /* the list hugs the section's right edge */
-.ob-curve.l svg { left: -74px; transform: scaleX(-1); }
-.ob-curve:last-child { height: 64px; margin-bottom: -6px; }
+.linklike {
+  border: 0; background: none; padding: 0; cursor: pointer; font: inherit;
+  color: var(--brand-ink); font-weight: 700; text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.linklike:hover { color: var(--brand-deep); }
 .ob-form { max-width: 460px; }
 .ob-ctas { display: flex; align-items: center; gap: 12px; margin-top: 8px; flex-wrap: wrap; }
 .ob-cta-main {

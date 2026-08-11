@@ -1865,7 +1865,8 @@ function onboardingH() {
   const items = listItems().slice(0, 4);
   const preview = items.length ? items.map(({ pr, qty }) =>
     `<div class="hero-line"><span>${esc(pr.n)}</span><span class="muted">×${qty}</span></div>`).join('')
-    : `<div class="hero-line muted">הרשימה עדיין ריקה</div>`;
+    : `<div class="hero-line muted">הרשימה עדיין ריקה —
+        <button class="linklike" data-action="go-receipt">📸 סרקו קבלה</button></div>`;
   const { cheapest } = computeRows();
   const winner = cheapest && state.list.size
     ? `<div class="hero-win"><div><div class="hero-win-k">הזול ביותר היום</div>
@@ -1876,28 +1877,21 @@ function onboardingH() {
       <div class="ob-brand">${logoSvg(44, false)}<span dir="ltr">ליםSlim</span></div>
       <div class="ob-badge">נתוני שקיפות מחירים רשמיים · מתעדכן יומית</div>
       <h1 class="ob-title">רשימה אחת.<br>הסל הזול ביותר.</h1>
-      ${(() => {
-        // wide translucent connector arrow, drawn for the right side; the left
-        // variant is the same SVG mirrored in CSS
-        const arrow = `<svg viewBox="0 0 170 104" fill="none" aria-hidden="true">
-          <path d="M148 6 C 158 42, 132 76, 88 90" stroke="currentColor" stroke-width="13" stroke-linecap="round"/>
-          <path d="M64 95 L83 72 L92 100 Z" fill="currentColor"/>
-        </svg>`;
-        return `<div class="ob-flow" aria-label="איך זה עובד">
+      <div class="ob-flow" aria-label="איך זה עובד">
+        <svg class="ob-river" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
+          <path d="M80 -2 C 86 14, 30 16, 26 34 C 22 50, 74 48, 77 66 C 80 82, 62 88, 55 99"/>
+          <path class="ob-river-head" d="M44 91 L55 101 L67 90"/>
+        </svg>
         <div class="ob-step"><span class="ob-dot">🛒</span>
           <div class="ob-step-t"><b>בונים רשימה אחת</b>
             <span>חיפוש בקטלוג, סריקת קבלה 📸 או קישור למתכון 🔗</span></div></div>
-        <div class="ob-curve r">${arrow}</div>
         <div class="ob-step"><span class="ob-dot">⚖️</span>
           <div class="ob-step-t"><b>סלים משווה בין כל הרשתות</b>
             <span>מחירים רשמיים, מבצעים ודמי משלוח — בלחיצה אחת</span></div></div>
-        <div class="ob-curve l">${arrow}</div>
         <div class="ob-step"><span class="ob-dot">💸</span>
           <div class="ob-step-t"><b>מזמינים במקום הזול ביותר</b>
             <span>הרשימה עוברת מוכנה לחנות שבחרתם — והחיסכון נשאר אצלכם</span></div></div>
-        <div class="ob-curve r">${arrow}</div>
-      </div>`;
-      })()}
+      </div>
       <div class="ob-form">
         <div class="field"><label>כתובת למשלוח</label>
           <input id="obAddress" class="input" placeholder="רחוב, מספר, עיר" value="${esc(state.address)}"></div>
@@ -2185,7 +2179,8 @@ function buildH() {
         ${noteH()}
         <div class="card list-card">
           <div class="list-head"><h3>הרשימה שלי</h3><span class="muted">${t.items.length} מוצרים ברשימה</span></div>
-          ${t.items.length ? rows : '<div class="list-empty">הרשימה ריקה — חפשו מוצר או בחרו מהמוצרים הנפוצים.</div>'}
+          ${t.items.length ? rows : `<div class="list-empty">הרשימה ריקה — חפשו מוצר, בחרו מהמוצרים הנפוצים,
+            או <button class="linklike" data-action="go-receipt">📸 צלמו קבלה</button> ונמלא אותה בשבילכם.</div>`}
           ${t.items.length ? `<div class="list-foot"><button class="btn-ghost" data-action="clear-list">🗑 ניקוי הרשימה</button></div>` : ''}
         </div>
       </div>
