@@ -105,10 +105,12 @@ Downloading is done via the il-supermarket-scraper library (PyPI).
     onboarding — muted, because that is the only way autoplay is allowed, and the
     captions are burnt in so it reads without sound. The 2-minute cut is
     preload="none" and only fetched when asked for, and phones get the vertical
-    recording via <source media>. It renders AFTER the form on purpose: dropping
-    it between the flow and the form silently pushed the primary CTA back below
-    the fold on every phone (measured 518 -> 852), which is why it also carries
-    order:3 in the stacked breakpoint and why test_seo pins both. Regenerate with
+    recording via <source media>. It lives in .ob-side, ABOVE the basket card —
+    which is the left column on a wide screen and stacks below .ob-main
+    everywhere else, so one placement serves both. That detail is load-bearing:
+    rendering it between the flow and the form pushed the primary CTA from
+    y=518 to y=852, below the fold on every phone, and test_seo pins the
+    position. Regenerate with
     the Playwright recorder + synthesised piano bed (scratch scripts, not in the
     repo); keep each file inside the size budget the tests assert.
   * pack value ("אותו מוצר, אריזה משתלמת יותר" in the basket): betterValueAt()

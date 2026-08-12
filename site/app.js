@@ -2136,9 +2136,9 @@ function onboardingH() {
         <button class="rcpt-cta" data-action="go-receipt">📸 <b>יש קבלה מהסופר?</b>
           סרקו אותה — ונבנה לכם את הרשימה אוטומטית</button>
       </div>
-      ${videoH()}
     </div>
     <div class="ob-side">
+      ${videoH()}
       <div class="ob-hero">
         <div class="ob-blob"></div>
         <div class="hero-card">

@@ -180,17 +180,21 @@ def test_home_page_seo_tags():
 
 
 def test_walkthrough_video_never_precedes_the_main_cta():
-    """The onboarding CTA was lifted above the fold on stacked layouts; a video
-    section inserted before the form silently undid that, so pin the order.
+    """The onboarding CTA sits above the fold on stacked layouts; a video section
+    rendered before the form silently pushed it back down (518 -> 852 on a
+    phone), so pin where the video lives.
+
+    It belongs to .ob-side, which is the left column on desktop and stacks BELOW
+    .ob-main everywhere else — that is what puts it top-left on a wide screen and
+    still after the CTA on a narrow one.
     """
     app = read(os.path.join(SITE, "app.js"))
-    css = read(os.path.join(SITE, "style.css"))
-    # in the template the video comes after the form that holds the CTA
     assert app.index("ob-cta-main") < app.index("${videoH()}"), \
         "videoH() must render after the primary CTA"
-    # and on stacked layouts the flex order keeps it last
-    assert re.search(r"\.ob-video\s*\{[^}]*order:\s*3", css), \
-        "the stacked layout must give .ob-video order 3, after .ob-form and .ob-flow"
+    side = app.index('class="ob-side"')
+    assert side < app.index("${videoH()}"), "videoH() must sit inside .ob-side"
+    assert app.index("${videoH()}") < app.index('class="ob-hero"'), \
+        "the video goes above the basket card, not below it"
 
 
 def test_video_assets_exist_and_are_reasonable():
