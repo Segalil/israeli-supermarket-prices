@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<style>
+  body { margin: 0; width: 300px; font-family: "Assistant", -apple-system, system-ui, sans-serif;
+    background: #f7f4f1; color: #524646; font-size: 14px; line-height: 1.55; }
+  .head { display: flex; align-items: center; gap: 10px; padding: 14px 16px 10px; }
+  .head img { width: 34px; height: 28px; }
+  .head b { font-size: 16px; }
+  .box { margin: 0 14px 12px; background: #fffdfc; border: 1px solid #eae4e0;
+    border-radius: 14px; padding: 12px 14px; }
+  .status { font-weight: 700; color: #256a73; }
+  ol { margin: 6px 0 0; padding-inline-start: 18px; }
+  li { margin: 4px 0; }
+  a.btn { display: block; text-align: center; background: #35858e; color: #fff;
+    text-decoration: none; border-radius: 999px; padding: 10px; font-weight: 700;
+    margin: 0 14px 14px; }
+  .muted { color: #6a5e5b; font-size: 12.5px; }
+</style>
+</head>
+<body>
+  <div class="head"><img src="icons/icon48.png" alt=""><b>ליםSlim — העברת סל</b></div>
+  <div class="box" id="statusBox">
+    <div class="status" id="statusLine">בודק אם יש רשימה ממתינה…</div>
+    <div class="muted" id="statusDetail"></div>
+  </div>
+  <div class="box">
+    <b>איך זה עובד?</b>
+    <ol>
+      <li>באתר ליםSlim בונים רשימת קניות ומשווים מחירים</li>
+      <li>לוחצים "בניית ההזמנה" ברשת שבחרתם</li>
+      <li>באתר הרשת יופיע פאנל שמעביר את המוצרים לעגלה</li>
+    </ol>
+  </div>
+  <a class="btn" href="https://slim-super.com/" target="_blank" rel="noopener">לאתר ליםSlim ↗</a>
+  <script src="popup.js"></script>
+</body>
+</html>
