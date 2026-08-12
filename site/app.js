@@ -183,6 +183,7 @@ const state = {
   seeded: false,
   receipt: { stage: 'idle', progress: 0, statusText: '', imgUrl: '', items: [], error: '',
     saveAsList: true, returnTo: '' },
+  videoFull: false,
   recipe: { stage: 'idle', url: '', text: '', pasteOpen: false, error: '', statusText: '',
     name: '', ingredients: [], saveAsList: true },
 };
@@ -2034,6 +2035,35 @@ function navH() {
     </div>
   </header>`;
 }
+/* The walkthrough. The short loop plays itself (muted, so autoplay is allowed)
+   and carries burnt-in captions, which is why it reads with the sound off; the
+   full one is only fetched when someone asks for it (preload="none"), and phones
+   get the vertical recording rather than a letterboxed desktop one. */
+function videoH() {
+  const short = state.videoFull ? '' : `
+    <video class="ob-video-el" autoplay muted loop playsinline preload="metadata"
+      poster="media/poster.jpg" aria-label="הדגמה קצרה של השימוש בסלים">
+      <source src="media/slim-explainer-short.mp4" type="video/mp4">
+    </video>`;
+  const full = state.videoFull ? `
+    <video class="ob-video-el" controls autoplay playsinline preload="none"
+      poster="media/poster.jpg" aria-label="מדריך מלא לשימוש בסלים">
+      <source src="media/slim-explainer-mobile.mp4" type="video/mp4" media="(max-width: 700px)">
+      <source src="media/slim-explainer.mp4" type="video/mp4">
+    </video>` : '';
+  return `<section class="ob-video">
+    <div class="ob-video-head">
+      <h2>איך זה עובד</h2>
+      <button class="btn-outline sm" data-action="video-toggle">
+        ${state.videoFull ? '↺ חזרה להדגמה הקצרה' : '▶ המדריך המלא · 2 דק׳'}</button>
+    </div>
+    <div class="ob-video-frame">${short}${full}</div>
+    <p class="fine">${state.videoFull
+      ? 'המדריך המלא — בניית רשימה, סריקת קבלה, מתכון, איחוד רשימות והשוואה.'
+      : 'הדגמה של 30 שניות, בלי קול. למדריך המלא לחצו על הכפתור.'}</p>
+  </section>`;
+}
+
 function footH() {
   return `<footer class="foot">
     <nav class="foot-guides" aria-label="מדריכים">
@@ -2106,6 +2136,7 @@ function onboardingH() {
         <button class="rcpt-cta" data-action="go-receipt">📸 <b>יש קבלה מהסופר?</b>
           סרקו אותה — ונבנה לכם את הרשימה אוטומטית</button>
       </div>
+      ${videoH()}
     </div>
     <div class="ob-side">
       <div class="ob-hero">
@@ -3498,6 +3529,7 @@ document.addEventListener('click', e => {
       render();
       break;
     }
+    case 'video-toggle': state.videoFull = !state.videoFull; render(); break;
     case 'mode': state.mode = btn.dataset.mode; render(); break;
     case 'pick': nav('#/basket/' + encodeURIComponent(btn.dataset.chain)); break;
     case 'toggle-sub': {

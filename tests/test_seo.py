@@ -177,3 +177,36 @@ def test_home_page_seo_tags():
     # the cache-busting step in deploy-pages.yml rewrites these exact strings
     assert '<script src="app.js" defer></script>' in html
     assert '<link rel="stylesheet" href="style.css">' in html
+
+
+def test_walkthrough_video_never_precedes_the_main_cta():
+    """The onboarding CTA was lifted above the fold on stacked layouts; a video
+    section inserted before the form silently undid that, so pin the order.
+    """
+    app = read(os.path.join(SITE, "app.js"))
+    css = read(os.path.join(SITE, "style.css"))
+    # in the template the video comes after the form that holds the CTA
+    assert app.index("ob-cta-main") < app.index("${videoH()}"), \
+        "videoH() must render after the primary CTA"
+    # and on stacked layouts the flex order keeps it last
+    assert re.search(r"\.ob-video\s*\{[^}]*order:\s*3", css), \
+        "the stacked layout must give .ob-video order 3, after .ob-form and .ob-flow"
+
+
+def test_video_assets_exist_and_are_reasonable():
+    media = os.path.join(SITE, "media")
+    for name, cap_mb in [("slim-explainer-short.mp4", 4),
+                         ("slim-explainer.mp4", 12),
+                         ("slim-explainer-mobile.mp4", 8),
+                         ("poster.jpg", 1)]:
+        path = os.path.join(media, name)
+        assert os.path.exists(path), f"missing {name}"
+        mb = os.path.getsize(path) / 1e6
+        assert mb <= cap_mb, f"{name} is {mb:.1f}MB, over the {cap_mb}MB budget"
+
+
+def test_full_video_is_not_eagerly_downloaded():
+    app = read(os.path.join(SITE, "app.js"))
+    block = app[app.index("function videoH"):app.index("function footH")]
+    assert 'preload="none"' in block, "the 2-minute video must not preload"
+    assert "autoplay muted loop" in block, "the short loop must be muted to autoplay"

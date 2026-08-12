@@ -334,6 +334,17 @@ html.a11y-noanim *, html.a11y-noanim *::before, html.a11y-noanim *::after {
   text-underline-offset: 3px;
 }
 .linklike:hover { color: var(--brand-deep); }
+/* the walkthrough, under the how-it-works flow */
+.ob-video { max-width: 520px; margin: 0 0 42px; }
+.ob-video-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
+.ob-video-head h2 { font-size: 22px; }
+.ob-video-frame {
+  background: var(--text); border-radius: var(--radius-sm); overflow: hidden;
+  box-shadow: var(--shadow-md); line-height: 0;
+}
+.ob-video-el { display: block; width: 100%; height: auto; max-height: 60vh; margin: 0 auto; }
+.ob-video .fine { margin-top: 10px; }
+
 .ob-form { max-width: 460px; }
 .ob-ctas { display: flex; align-items: center; gap: 12px; margin-top: 8px; flex-wrap: wrap; }
 .ob-cta-main {
@@ -833,6 +844,7 @@ html.a11y-noanim .ob-cta-main { animation: none; }
   .ob-badge { align-self: flex-start; }   /* else the flex item stretches wide */
   .ob-form { order: 1; margin-bottom: 40px; }
   .ob-flow { order: 2; margin-bottom: 0; }
+  .ob-video { order: 3; margin-top: 34px; }   /* never above the CTA */
   .auth { grid-template-columns: 1fr; }
   .auth-aside { display: none; }
 }
