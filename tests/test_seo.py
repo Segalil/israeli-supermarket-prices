@@ -39,6 +39,21 @@ def json_ld(html):
             re.findall(r'(?is)<script type="application/ld\+json">(.*?)</script>', html)]
 
 
+def sitemap_target(url):
+    """The file a sitemap URL resolves to, or None.
+
+    Two shapes are in use: clean directory URLs served by their index.html
+    (/articles/foo/), and flat pages (/privacy.html).
+    """
+    rel = url[len(BASE):].strip("/")
+    if not rel:
+        return os.path.join(SITE, "index.html")
+    for candidate in (os.path.join(SITE, rel, "index.html"), os.path.join(SITE, rel)):
+        if os.path.isfile(candidate):
+            return candidate
+    return None
+
+
 def test_article_pages_exist():
     slugs = {slug for slug, _ in article_pages() if slug}
     assert slugs, "no article pages found under site/articles/"
@@ -133,10 +148,7 @@ def test_sitemap_lists_every_page():
         assert url.startswith(BASE), f"sitemap has a foreign URL: {url}"
     # and nothing listed that does not exist — a 404 in the sitemap is a crawl error
     for url in locs:
-        rel = url[len(BASE):].strip("/")
-        if rel:
-            assert os.path.exists(os.path.join(SITE, rel, "index.html")), \
-                f"sitemap lists {url} but the file does not exist"
+        assert sitemap_target(url), f"sitemap lists {url} but the file does not exist"
 
 
 def test_sitemap_home_lastmod_is_stampable():
@@ -214,3 +226,16 @@ def test_full_video_is_not_eagerly_downloaded():
     block = app[app.index("function videoH"):app.index("function footH")]
     assert 'preload="none"' in block, "the 2-minute video must not preload"
     assert "autoplay muted loop" in block, "the short loop must be muted to autoplay"
+
+
+def test_every_sitemap_page_declares_a_canonical():
+    """Listing a page for crawling without a canonical invites duplicate-URL
+    confusion (slim-super.com/x vs /x?utm=…)."""
+    sitemap = read(os.path.join(SITE, "sitemap.xml"))
+    for url in sorted(set(re.findall(r"<loc>([^<]+)</loc>", sitemap))):
+        path = sitemap_target(url)
+        assert path, f"{url} has no file"
+        html = read(path)
+        m = re.search(r'<link rel="canonical" href="([^"]+)"', html)
+        assert m, f"{url} is in the sitemap but declares no canonical"
+        assert m.group(1) == url, f"{url}: canonical points at {m.group(1)}"
