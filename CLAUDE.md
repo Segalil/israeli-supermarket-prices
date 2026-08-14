@@ -98,7 +98,14 @@ Downloading is done via the il-supermarket-scraper library (PyPI).
     a suggestion stores addressCity, which drives deliveryStatus();
   * delivery coverage per chain: CHAIN_META.delivery = 'nationwide' | [cities]
     (ESTIMATES, like fee/min/speed — the UI labels them "הערכה"); nextSlot()
-    computes the next typical 4h window (no Shabbat) from CHAIN_META.speed;
+    computes the next typical 4h window (no Shabbat) from CHAIN_META.speed.
+    THREE fulfilment shapes, not two: normal delivery; noOnline (אושר עד — no
+    online store at all, so the handoff is a department-sorted in-branch list);
+    and pickupOnly (יוחננוף — you CAN order online, but the order is collected
+    in branch and never delivered). pickupOnly must zero the delivery fee in
+    every total, suppress the minimum-order warning and the slot estimate, and
+    make deliveryStatus return 'pickup' — a chain that does not deliver cannot
+    have delivery coverage. Keep the mishloach-kniyot guide's table in step;
   * merged products keep aliases → byKey maps alias keys too, so saved lists
     survive consolidation.
   * extension search (extension/chains/*.js + panel.js): a chain's search key is

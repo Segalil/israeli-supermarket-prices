@@ -64,11 +64,10 @@ const CHAIN_META = {
       'אשדוד', 'רחובות', 'נס ציונה', 'מודיעין', 'לוד', 'רמלה', 'יבנה'],
     home: 'https://www.victoryonline.co.il/',
     search: q => `https://www.victoryonline.co.il/search/${encodeURIComponent(q)}`, barcode: true },
-  'יוחננוף': { initial: 'י', fee: 30, min: 200, speed: 2,
-    delivery: ['תל אביב', 'ראשון לציון', 'רחובות', 'פתח תקווה', 'ראש העין', 'נתניה',
-      'אשדוד', 'אשקלון', 'באר שבע', 'ירושלים', 'חיפה', 'קרית אתא', 'חדרה', 'לוד',
-      'רמלה', 'מודיעין', 'יבנה', 'חולון', 'בת ים', 'רמת גן', 'גדרה', 'עפולה'],
+  // ordering online works, but the order is collected in branch — no delivery
+  'יוחננוף': { initial: 'י', pickupOnly: true, fee: 0, min: 0, speed: 2,
     home: 'https://yochananof.co.il/',
+    branches: 'https://yochananof.co.il/',
     search: q => `https://yochananof.co.il/search?q=${encodeURIComponent(q)}`, barcode: true },
   'אושר עד': { initial: 'א', noOnline: true,           // no online store exists
     branches: 'https://osherad.co.il/stores/', fee: 35, min: 300, speed: 3,
@@ -1002,13 +1001,14 @@ function computeRows() {
       sub += cost;
       promoSaved += base * qty - cost;
     }
-    const total = sub + (m.noOnline ? 0 : m.fee);
+    const total = sub + (m.noOnline || m.pickupOnly ? 0 : m.fee);
     const delivery = deliveryStatus(label);
     const penalty = (state.priority === 'fast' ? m.speed * 22
       : state.priority === 'balanced' ? m.speed * 8 + missing.length * 6
         : missing.length * 12) + (delivery === 'no' ? 500 : 0);
     return { label, m, sub, missing, total, promoSaved, delivery,
-             belowMin: !m.noOnline && sub > 0 && sub < m.min, score: total + penalty };
+             belowMin: !m.noOnline && !m.pickupOnly && sub > 0 && sub < m.min,
+             score: total + penalty };
   });
   rows.sort((a, b) => a.score - b.score);
   const dearest = rows.length ? rows.reduce((a, b) => (a.total > b.total ? a : b)) : null;
@@ -1029,7 +1029,7 @@ function splitPlan() {
     g.sub += best.cost;
   }
   const groups = Object.values(byChain).sort((a, b) => b.sub - a.sub);
-  const total = groups.reduce((s, g) => s + g.sub + g.m.fee, 0);
+  const total = groups.reduce((s, g) => s + g.sub + (g.m.pickupOnly ? 0 : g.m.fee), 0);
   return { groups, total };
 }
 
@@ -1042,9 +1042,11 @@ function addressCity() {
   return parts.length > 1 ? parts[parts.length - 1] : '';
 }
 function deliveryStatus(label) {
+  const m = meta(label);
+  if (m.pickupOnly || m.noOnline) return 'pickup';   // nothing is delivered
   const city = addressCity();
   if (!city) return 'unknown';                       // no address yet
-  const d = meta(label).delivery;
+  const d = m.delivery;
   if (d === 'nationwide') return 'ok';
   if (!Array.isArray(d)) return 'maybe';
   const norm = s => s.replace(/[-–]/g, ' ').replace(/\s+/g, ' ').trim();
@@ -1056,6 +1058,7 @@ function deliveryLineH(label) {
   const city = addressCity();
   const status = deliveryStatus(label);
   if (status === 'unknown') return '';
+  if (status === 'pickup') return '<span class="del no">🏬 איסוף עצמי בסניף — אין משלוח</span>';
   if (status === 'ok') return `<span class="del ok">✓ משלוח ל${esc(city)} (הערכה)</span>`;
   if (status === 'no') return `<span class="del no">⚠ ייתכן שאין משלוח ל${esc(city)} — בדקו באתר הרשת</span>`;
   return '';
@@ -2514,13 +2517,14 @@ function resultsH() {
     body = `<div class="res-list">` + t.rows.map(r => {
       const barW = t.dearest ? Math.round((r.total / t.dearest.total) * 100) : 100;
       const isBest = r === t.cheapest;
-      const slot = r.m.noOnline ? '' : nextSlot(r.label);
+      const slot = (r.m.noOnline || r.m.pickupOnly) ? '' : nextSlot(r.label);
       return `<div class="res-card${isBest ? ' best' : ''}">
         ${chainVisual(r.label)}
         <div class="res-main">
           <div class="res-name-row">
             <span class="res-name">${esc(r.label)}${r.m.noOnline ? '' : ' אונליין'}</span>
             ${r.m.noOnline ? '<span class="tag min-tag">🏬 קנייה בסניף — אין אונליין</span>' : ''}
+            ${r.m.pickupOnly ? '<span class="tag min-tag">🏬 איסוף עצמי — אין משלוח</span>' : ''}
             ${isBest ? '<span class="tag best-tag">הכי משתלם</span>' : ''}
             ${r.missing.length ? `<span class="tag miss-tag" title="${esc(r.missing.map(p => p.n).join(', '))}">${r.missing.length === 1 ? 'מוצר אחד חסר' : r.missing.length + ' מוצרים חסרים'}</span>` : ''}
             ${r.belowMin ? `<span class="tag min-tag">מתחת למינימום ${ils0(r.m.min)}</span>` : ''}
@@ -2528,6 +2532,8 @@ function resultsH() {
           </div>
           <div class="res-meta">${r.m.noOnline
             ? 'ללא דמי משלוח — רשימה מסודרת לפי מחלקות לקנייה בסניף'
+            : r.m.pickupOnly
+            ? 'הזמנה אונליין ואיסוף עצמי בסניף — ללא דמי משלוח'
             : `${slot ? `משלוח קרוב: ${slot} (הערכה) · ` : ''}דמי משלוח ${ils0(r.m.fee)} · מינימום ${ils0(r.m.min)}${deliveryLineH(r.label) ? ' · ' + deliveryLineH(r.label) : ''}`}</div>
           ${(() => {
             const deals = dealSuggestions(r.label, t.items);
@@ -2683,12 +2689,14 @@ function basketH() {
   const acceptedTotal = subs.reduce((sum, s) => sum + (s.alt && s.accepted ? s.alt.price : 0), 0);
   const total = r.sub + acceptedTotal + m.fee;
   const belowMin = r.sub + acceptedTotal < m.min;
-  const slot = nextSlot(label);
+  const slot = m.pickupOnly ? '' : nextSlot(label);
   return `<div class="wrap page">
     <a class="back-link" href="#/results">← חזרה להשוואה</a>
     <h1 class="page-title">הסל שלך ב${esc(label)}</h1>
     <p class="page-sub">${lines.length} מתוך ${t.items.length} מוצרים נמצאו${m.noOnline
       ? ' · קנייה בסניף — אין חנות אונליין'
+      : m.pickupOnly
+      ? ' · הזמנה אונליין, איסוף עצמי בסניף'
       : (slot ? ' · משלוח קרוב: ' + esc(slot) + ' (הערכה)' : '')}</p>
     <div class="bsk-grid">
       <div>
@@ -2734,8 +2742,10 @@ function basketH() {
           <div class="co-row"><span class="muted">סל המוצרים (${lines.length})</span><b>${money(r.sub)}</b></div>
           ${r.promoSaved > 0.005 ? `<div class="co-row promo"><span class="muted">🏷 כבר כולל מבצעים בשווי</span><b>${money(r.promoSaved)}</b></div>` : ''}
           <div class="co-row"><span class="muted">חלופות שנוספו</span><b>${money(acceptedTotal)}</b></div>
-          <div class="co-row"><span class="muted">דמי משלוח (הערכה)</span><b>${money(m.fee)}</b></div>
-          ${slot ? `<div class="co-row"><span class="muted">משלוח קרוב (הערכה)</span><b>${esc(slot)}</b></div>` : ''}
+          ${m.pickupOnly
+            ? '<div class="co-row"><span class="muted">דמי משלוח</span><b>אין — איסוף עצמי בסניף</b></div>'
+            : `<div class="co-row"><span class="muted">דמי משלוח (הערכה)</span><b>${money(m.fee)}</b></div>
+          ${slot ? `<div class="co-row"><span class="muted">משלוח קרוב (הערכה)</span><b>${esc(slot)}</b></div>` : ''}`}
           ${deliveryLineH(label) ? `<div class="co-row"><span></span>${deliveryLineH(label)}</div>` : ''}
           ${belowMin ? `<div class="co-row warn"><span>שימו לב</span><b>מתחת למינימום ${ils0(m.min)}</b></div>` : ''}
         </div>
