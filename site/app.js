@@ -237,11 +237,33 @@ function avatar(text, cls = '') {
 function hasExtension() {
   return !!document.documentElement.dataset.slimExtension;
 }
-/* Chrome Web Store URL of the extension — paste once the listing is approved
-   and every promo becomes a live install button */
-const EXTENSION_URL = null;
+/* Chrome Web Store listing. The bare /detail/<id> form redirects to the slugged
+   URL by itself, so the id is the only thing worth pinning here — and the
+   ?authuser / ?hl params the dashboard hands you are personal to your Google
+   session and must never ship. */
+const EXTENSION_URL =
+  'https://chromewebstore.google.com/detail/onlfneilkoplkekognihmgcglkanajbj';
+
+/* Only offer the install where it can actually happen: Chrome Web Store
+   extensions install on desktop Chromium browsers and nowhere else — not on
+   Safari, and not on Chrome for Android or iOS, which have no extension
+   support at all. Showing the promo there is an invitation to a dead end. */
+function canInstallExtension(nav) {
+  const n = nav || (typeof navigator !== 'undefined' ? navigator : {});
+  const ua = n.userAgent || '';
+  if (/Android|iPhone|iPad|iPod/i.test(ua)) return false;      // no extensions on mobile at all
+  const d = n.userAgentData;                                    // Chromium-only API
+  if (d && Array.isArray(d.brands)) {
+    if (d.mobile) return false;
+    return d.brands.some(b => /Chromium|Google Chrome|Microsoft Edge|Opera/i.test(b.brand));
+  }
+  // Safari and Firefox expose no userAgentData, and their UA carries no Chrome/ token
+  if (/Mobile/i.test(ua)) return false;
+  return /Chrome\/|Chromium\/|Edg\/|OPR\//.test(ua);
+}
+
 function extensionPromoH(compact = false) {
-  if (hasExtension()) return '';
+  if (hasExtension() || !canInstallExtension()) return '';
   const cta = EXTENSION_URL
     ? `<a class="btn-primary sm" href="${EXTENSION_URL}" target="_blank" rel="noopener">🧩 התקנת התוסף</a>`
     : `<span class="tag promo-tag">בקרוב בחנות Chrome</span>`;

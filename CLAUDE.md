@@ -101,6 +101,17 @@ Downloading is done via the il-supermarket-scraper library (PyPI).
     computes the next typical 4h window (no Shabbat) from CHAIN_META.speed;
   * merged products keep aliases → byKey maps alias keys too, so saved lists
     survive consolidation.
+  * extension promo (extensionPromoH): EXTENSION_URL points at the published
+    Chrome Web Store listing by id — the bare /detail/<id> form redirects to the
+    slugged URL, and the ?authuser/?hl params the dashboard hands you are
+    personal to a Google session and must never ship (test_extension_promo
+    fails on either). It renders in three places (build sidebar, the basket of
+    an ONLINE chain, the online done screen) and is hidden three ways: once the
+    extension is installed (hasExtension), on in-store-only chains where it
+    cannot help, and wherever it cannot be installed — canInstallExtension
+    takes an injectable navigator, because a Chromium test runner reports
+    Chromium in userAgentData no matter what user agent you spoof, so Safari and
+    Firefox can only be tested by calling it directly.
   * walkthrough video (videoH, site/media/): a 30s silent loop autoplays on the
     onboarding — muted, because that is the only way autoplay is allowed, and the
     captions are burnt in so it reads without sound. The 2-minute cut is
