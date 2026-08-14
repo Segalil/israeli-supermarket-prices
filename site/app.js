@@ -184,6 +184,7 @@ const state = {
   receipt: { stage: 'idle', progress: 0, statusText: '', imgUrl: '', items: [], error: '',
     saveAsList: true, returnTo: '' },
   videoFull: false,
+  searchPage: 0,
   recipe: { stage: 'idle', url: '', text: '', pasteOpen: false, error: '', statusText: '',
     name: '', ingredients: [], saveAsList: true },
 };
@@ -1970,7 +1971,7 @@ function recipeH() {
 
 /* ---------- router ---------- */
 const APP_SCREENS = new Set(['build', 'results', 'basket', 'done', 'saved', 'profile',
-  'receipt', 'recipe', 'terms', 'accessibility']);
+  'receipt', 'recipe', 'search', 'terms', 'accessibility']);
 function nav(hash) { location.hash = hash; }
 function route() {
   // split BEFORE decoding — chain labels may contain an encoded slash (%2F)
@@ -2291,6 +2292,41 @@ function inStoreListText(label, items, total) {
   rows.push(`סה״כ משוער לפי מחירי ${label}: ${ils0(total)}`);
   return rows.join('\n');
 }
+/* Full results for one query, reached from "כל התוצאות" in the dropdown.
+   The dropdown can only show eight rows; this is where the rest live. */
+const SEARCH_PAGE_SIZE = 24;
+function searchH() {
+  const q = (state.routeParam || '').trim();
+  const hits = q.length >= 2 ? suggestMatches(q.toLowerCase()).map(x => x[1]) : [];
+  const pages = Math.max(1, Math.ceil(hits.length / SEARCH_PAGE_SIZE));
+  const page = Math.min(state.searchPage, pages - 1);
+  state.searchPage = page;
+  const tiles = hits.slice(page * SEARCH_PAGE_SIZE, (page + 1) * SEARCH_PAGE_SIZE)
+    .map(popTileH).join('');
+  const pager = pages > 1 ? `<div class="cat-pager">
+      <button class="btn-outline sm" data-action="search-page" data-dir="-1"${page === 0 ? ' disabled' : ''}>הקודם</button>
+      <span class="muted sm">עמוד ${page + 1} מתוך ${pages.toLocaleString('he-IL')}</span>
+      <button class="btn-outline sm" data-action="search-page" data-dir="1"${page >= pages - 1 ? ' disabled' : ''}>הבא</button>
+    </div>` : '';
+  const count = state.list.size;
+  return `<div class="wrap page">
+    <div class="search-back">
+      <button class="btn-primary" data-action="go-build">← חזרה לרשימה שלי${
+        count ? ` (${count} מוצרים)` : ''}</button>
+    </div>
+    <h1 class="page-title">תוצאות עבור ״${esc(q)}״</h1>
+    <p class="page-sub">${hits.length
+      ? `${hits.length.toLocaleString('he-IL')} מוצרים · הוסיפו בלחיצה על +, והרשימה מתעדכנת מיד`
+      : 'לא נמצאו מוצרים תואמים. נסו מילה אחרת או שם מותג.'}</p>
+    ${noteH()}
+    ${hits.length ? `<div class="card"><div class="pop-grid">${tiles}</div>${pager}</div>` : ''}
+    <div class="search-back bottom">
+      <button class="btn-primary" data-action="go-build">← חזרה לרשימה שלי${
+        count ? ` (${count} מוצרים)` : ''}</button>
+    </div>
+  </div>`;
+}
+
 function popTileH(pr) {
   return `
     <div class="pop-tile">
@@ -3074,6 +3110,7 @@ function render() {
     case 'profile': body = profileH(); break;
     case 'receipt': body = receiptH(); break;
     case 'recipe': body = recipeH(); break;
+    case 'search': body = searchH(); break;
     case 'terms': body = termsH(); break;
     case 'accessibility': body = accessibilityH(); break;
     default: body = buildH();
@@ -3192,7 +3229,30 @@ function hideSuggest() { const b = $('#suggestBox'); if (b) { b.hidden = true; b
    cucumber (4 chains) on the chain-count tie-break. Quotes are stripped so
    "קוטג" reaches "קוטג'". Scoring one TERM rather than the whole query keeps
    this reusable for per-token matching of multi-word searches. */
-function nameTier(pr, term) {
+/* Hebrew feminine singular <-> plural, and nothing else.
+   "בננה" and "בננות" share the stem בננ but neither is a prefix of the other, so
+   the prefix rungs never connect them — the shopper types the singular and the
+   catalogue lists the plural. Strictly S+"ה" <-> S+"ות" on the same stem:
+   folding a bare "ה" would make "חלב" match "חלבה", which CLAUDE.md forbids, and
+   a general stemmer was measured to put shampoo into "שמנת קוקוס". Masculine
+   plurals (תפוח -> תפוחים) already work through the prefix rungs. */
+function pluralForm(word) {
+  if (word.endsWith('ות') && word.length >= 5) return word.slice(0, -2) + 'ה';
+  if (word.endsWith('ה') && word.length >= 4) return word.slice(0, -1) + 'ות';
+  return null;
+}
+function pluralPair(a, b) {
+  return pluralForm(a) === b || pluralForm(b) === a;
+}
+
+/* How well a product name answers ONE search term. Lower is better, -1 = miss.
+   The top rung — the name IS the term — is what keeps a generic product above
+   its specific variants: every "מלפפון בחומץ…" also starts with "מלפפון", so
+   without it the pickled jars (stocked in 5 chains) outranked the fresh
+   cucumber (4 chains) on the chain-count tie-break. Quotes are stripped so
+   "קוטג" reaches "קוטג'". Scoring one TERM rather than the whole query keeps
+   this reusable for per-token matching of multi-word searches. */
+function rawTier(pr, term) {
   const n = pr.nLow, t = stripQuotes(term);
   const bare = stripQuotes(n), words = bare.split(/\s+/);
   if (bare === t) return 0;                                  // the name is the term
@@ -3203,11 +3263,20 @@ function nameTier(pr, term) {
   if (n.includes(term) || pr.bLow.includes(term)) return 5;  // anywhere / brand
   return -1;
 }
-/* Phone layout — same 680px breakpoint the stylesheet switches the app at. */
-function isPhoneLayout() { return matchMedia('(max-width: 680px)').matches; }
-/* Every catalogue match for a search-box query, best first, as
-   [score, product, codeHit, spread]. Split out from the rendering so the
-   ranking can be tested headlessly (tests/search_harness.js). */
+
+/* The other grammatical number counts too, half a rung behind, so an exact-form
+   hit always outranks it: searching בננה puts the product literally called
+   "בננות" straight after "בננה" itself, not below a hundred banana chips. */
+function nameTier(pr, term) {
+  const direct = rawTier(pr, term);
+  const alt = pluralForm(stripQuotes(term));
+  if (!alt) return direct;
+  const viaAlt = rawTier(pr, alt);
+  if (viaAlt < 0) return direct;
+  const penalised = viaAlt + 0.5;
+  return direct < 0 ? penalised : Math.min(direct, penalised);
+}
+
 function suggestMatches(q) {
   const isCode = /^\d{3,}$/.test(q);
   // Words of a multi-word query, matched individually and in any order below.
@@ -3244,13 +3313,13 @@ function suggestMatches(q) {
             const fits = want != null && has != null &&
               (want === PACK_ANY || has === PACK_ANY || want === has);
             if (!fits) { worst = -1; break; }
-            ts = 5;                      // weakest rung: a synonym, not the word
+            ts = 6;                      // weakest rung: a synonym, not the word
           }
           if (ts > worst) worst = ts;
           spread += ts;
         }
         if (worst < 0) continue;
-        score = 6 + worst;
+        score = 7 + worst;   // below every contiguous rung (0..6)
       }
     }
     scored.push([score, pr, codeHit, spread]);
@@ -3265,14 +3334,19 @@ function renderSuggest(query) {
   if (!box) return;
   const q = query.trim().toLowerCase();
   if (q.length < 2) { hideSuggest(); return; }
-  const top = suggestMatches(q).slice(0, 8);
+  const all = suggestMatches(q);
+  const top = all.slice(0, 8);
   if (!top.length) { box.innerHTML = '<div class="suggest-none">לא נמצאו מוצרים תואמים</div>'; box.hidden = false; return; }
+  // the dropdown only fits eight; everything else lives on the results screen
+  const more = all.length > top.length ? `
+    <button class="suggest-all" data-action="go-search" data-q="${esc(q)}">
+      כל התוצאות (${all.length.toLocaleString('he-IL')}) ←</button>` : '';
   box.innerHTML = top.map(([, pr, codeHit]) => `
     <button class="suggest-row" data-action="add-search" data-key="${esc(pr.k)}">
       <span class="sug-main"><span class="sug-name">${esc(pr.n)}</span>
       <span class="sug-sub">${esc([codeHit ? 'מק"ט ' + codeHit : '', pr.c ? state.categories[pr.c] : '', pr.b, pr.u].filter(Boolean).join(' · ') || 'ללא פרטים')}</span></span>
       <span class="sug-from">${esc(fromLabel(pr))}</span>
-    </button>`).join('');
+    </button>`).join('') + more;
   box.hidden = false;
 }
 
@@ -3530,6 +3604,16 @@ document.addEventListener('click', e => {
       break;
     }
     case 'video-toggle': state.videoFull = !state.videoFull; render(); break;
+    case 'go-search': {
+      state.searchPage = 0;
+      hideSuggest();
+      nav('#/search/' + encodeURIComponent(btn.dataset.q || ''));
+      break;
+    }
+    case 'search-page': {
+      state.searchPage = Math.max(0, state.searchPage + (+btn.dataset.dir || 0));
+      render(); window.scrollTo(0, 0); break;
+    }
     case 'mode': state.mode = btn.dataset.mode; render(); break;
     case 'pick': nav('#/basket/' + encodeURIComponent(btn.dataset.chain)); break;
     case 'toggle-sub': {

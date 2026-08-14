@@ -193,6 +193,15 @@ Downloading is done via the il-supermarket-scraper library (PyPI).
      "קולה זירו מארז" answer with a Sprite branded קוקה קולה), scored 6+worst.
   3. a word that still fails may be satisfied by the pack tag (packOf), never
      stripped from the query, scored at the weakest rung.
+  nameTier also scores the OTHER grammatical number half a rung behind, via
+  pluralForm: "בננה" and "בננות" share a stem but neither is a prefix of the
+  other, so nothing else connected them. The pairing is strictly S+"ה" <-> S+"ות"
+  — folding a bare "ה" would make חלב match חלבה, and a general stemmer was
+  measured putting shampoo into "שמנת קוקוס". Masculine plurals already work
+  through the prefix rungs. Contiguous rungs now run 0..5 (+0.5 for the other
+  number) and the scattered-token band starts at 7; keep that gap if you add a
+  rung. #/search/<query> renders every match with paging when the eight-row
+  dropdown is not enough — the dropdown's last row links to it.
   Scoring the later layers strictly BELOW the earlier ones is what makes each
   addition provably additive: measured over 400 real-name queries, the contiguous
   match set is unchanged and no token-only row ever outranks a contiguous one.

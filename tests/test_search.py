@@ -119,3 +119,22 @@ def test_a_six_pack_is_found_however_it_is_spelled(out):
 def test_asking_for_a_pack_does_not_return_the_single(out):
     assert not out["packSearch"]["singleBottleNotOffered"], \
         "a shopper asking for a six-pack must not be handed the 1.5L bottle"
+
+
+def test_hebrew_feminine_plural_is_matched(out):
+    """בננה must find בננות — neither is a prefix of the other, so the prefix
+    rungs alone never connect them."""
+    pl = out["plural"]
+    assert pl["singularFindsPlural"], "searching בננה must return בננות"
+    assert pl["pluralFindsSingularWordInName"]
+
+
+def test_plural_pairing_stays_narrow(out):
+    """Only S+ה <-> S+ות on an identical stem. Folding a bare ה would make חלב
+    match חלבה, which CLAUDE.md forbids, and a general stemmer was measured to
+    put shampoo into שמנת קוקוס."""
+    pairs = out["plural"]["pairs"]
+    assert pairs["bananaOk"] == [True]
+    assert pairs["milkNot"] == [False], "חלב must never pair with חלבה"
+    assert pairs["oilNot"] == [False], "שמן must never pair with שמנת"
+    assert pairs["tooShort"] == [False], "a two-letter stem is not a plural pair"

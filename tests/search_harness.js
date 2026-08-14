@@ -3,8 +3,8 @@
 'use strict';
 const loadApp = require('./load_app');
 
-const { state, suggestMatches, nameTier, packOf, packTermValue } =
-  loadApp(['state', 'suggestMatches', 'nameTier', 'packOf', 'packTermValue']);
+const { state, suggestMatches, nameTier, packOf, packTermValue, pluralPair } =
+  loadApp(['state', 'suggestMatches', 'nameTier', 'packOf', 'packTermValue', 'pluralPair']);
 
 const CHAINS = ['שופרסל', 'רמי לוי'];
 
@@ -37,6 +37,9 @@ const CATALOGUE = [
   prod('7290000000025', 'גזה 40x20 סמ', [9.0, null], { u: '1 יחידות' }),
   prod('7290000000026', 'בייגלה שמיניות גדולות 400 גרם', [11.0, null], { u: '400 גרם' }),
   prod('7290000000027', 'זוג מגבות מטבח 40*60 סמ', [19.0, null], { u: "1 יח'" }),
+  // Hebrew feminine singular/plural: the shopper types one, the file lists the other
+  prod('7290000000030', 'בננות', [7.9, null], { u: "1 יח'" }),
+  prod('7290000000031', 'עגבניות שרי', [8.9, null], { u: '250 גרם' }),
 ];
 
 state.chains = CHAINS;
@@ -55,6 +58,7 @@ function contiguousKeys(q) {
 }
 
 const names = q => suggestMatches(q).map(x => x[1].n);
+const pluralPairProbe = (a, b) => pluralPair(a, b);
 const keys = q => suggestMatches(q).map(x => x[1].k);
 
 const QUERIES = ['חלב', 'מלפפון', 'קוטג', 'במבה', 'לחם אחיד', 'חלב תנובה 3%',
@@ -66,9 +70,9 @@ for (const q of QUERIES) {
   const before = contiguousKeys(q);
   const scoredRows = suggestMatches(q);
   const after = scoredRows.map(x => x[1].k);
-  const contiguousAfter = scoredRows.filter(x => x[0] <= 5).map(x => x[1].k);
-  const lastContiguous = scoredRows.reduce((acc, x, i) => (x[0] <= 5 ? i : acc), -1);
-  const firstToken = scoredRows.findIndex(x => x[0] >= 6);
+  const contiguousAfter = scoredRows.filter(x => x[0] <= 6).map(x => x[1].k);
+  const lastContiguous = scoredRows.reduce((acc, x, i) => (x[0] <= 6 ? i : acc), -1);
+  const firstToken = scoredRows.findIndex(x => x[0] >= 7);
   appendOnly[q] = {
     countBefore: before.length,
     countAfter: after.length,
@@ -123,6 +127,17 @@ process.stdout.write(JSON.stringify({
     maaraz: packTermValue('מארז'),
     tersar: packTermValue('תריסר'),
     milk: packTermValue('חלב'),
+  },
+  plural: {
+    singularFindsPlural: names('בננה').includes('בננות'),
+    pluralFindsSingularWordInName: names('עגבניה').some(x => x.includes('עגבניות')),
+    // the pairing must not resurrect what CLAUDE.md forbids
+    pairs: {
+      bananaOk: [pluralPairProbe('בננה', 'בננות')],
+      milkNot: [pluralPairProbe('חלב', 'חלבה')],
+      oilNot: [pluralPairProbe('שמן', 'שמנת')],
+      tooShort: [pluralPairProbe('מה', 'מות')],
+    },
   },
   packSearch: {
     byWord: names('קוקה קולה זירו שישייה'),

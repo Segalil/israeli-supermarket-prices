@@ -877,3 +877,15 @@ html.a11y-noanim .ob-cta-main { animation: none; }
   .done { padding: 70px 16px; }
   .foot { padding: 18px 16px 26px; }
 }
+
+/* "all results" row closing the suggestion list, and the results screen */
+.suggest-all {
+  display: block; width: 100%; border: 0; border-top: 1px solid var(--divider);
+  background: var(--brand-tint); color: var(--brand-ink);
+  padding: 13px 18px; font-family: inherit; font-size: 14px; font-weight: 700;
+  cursor: pointer; text-align: center;
+}
+.suggest-all:hover { background: var(--brand-line); color: var(--surface); }
+.search-back { margin: 0 0 18px; }
+.search-back.bottom { margin: 22px 0 0; text-align: center; }
+.search-back .btn-primary { font-size: 15px; }
