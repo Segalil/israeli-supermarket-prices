@@ -239,3 +239,26 @@ def test_every_sitemap_page_declares_a_canonical():
         m = re.search(r'<link rel="canonical" href="([^"]+)"', html)
         assert m, f"{url} is in the sitemap but declares no canonical"
         assert m.group(1) == url, f"{url}: canonical points at {m.group(1)}"
+
+
+def test_render_preserves_video_playback():
+    """Every onboarding state change is a full innerHTML swap, so without this
+    the walkthrough restarted whenever a chain chip was ticked."""
+    app = read(os.path.join(SITE, "app.js"))
+    render = app[app.index("function render() {"):app.index("function bindScreen()")]
+    assert "captureVideo()" in render and "restoreVideo(" in render, \
+        "render() must carry the video position across the innerHTML swap"
+    # anchor on the MAIN body assignment; the first app.innerHTML in render() is
+    # the early-return error screen, which has no video to preserve
+    main_swap = render.index("app.innerHTML = (isApp")
+    assert render.index("captureVideo()") < main_swap, \
+        "the position has to be read BEFORE the DOM is replaced"
+    assert main_swap < render.index("restoreVideo("), \
+        "and applied after"
+    # and the restore must refuse to cross variants, or switching short<->full
+    # would resume the new one at the old one's timestamp
+    block = app[app.index("function restoreVideo"):app.index("function render() {")]
+    assert "dataset.mode !== prev.mode" in block, \
+        "restoreVideo must only restore into the same variant"
+    for mode in ('data-mode="short"', 'data-mode="full"'):
+        assert mode in app, f"the video element is missing {mode}"

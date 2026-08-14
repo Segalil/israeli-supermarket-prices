@@ -2042,12 +2042,14 @@ function navH() {
    get the vertical recording rather than a letterboxed desktop one. */
 function videoH() {
   const short = state.videoFull ? '' : `
-    <video class="ob-video-el" autoplay muted loop playsinline preload="metadata"
+    <video class="ob-video-el" data-mode="short"
+      autoplay muted loop playsinline preload="metadata"
       poster="media/poster.jpg" aria-label="הדגמה קצרה של השימוש בסלים">
       <source src="media/slim-explainer-short.mp4" type="video/mp4">
     </video>`;
   const full = state.videoFull ? `
-    <video class="ob-video-el" controls autoplay playsinline preload="none"
+    <video class="ob-video-el" data-mode="full"
+      controls autoplay playsinline preload="none"
       poster="media/poster.jpg" aria-label="מדריך מלא לשימוש בסלים">
       <source src="media/slim-explainer-mobile.mp4" type="video/mp4" media="(max-width: 700px)">
       <source src="media/slim-explainer.mp4" type="video/mp4">
@@ -3094,6 +3096,28 @@ function mountA11y() {
 }
 
 /* ---------- render & events ---------- */
+/* Every state change on the onboarding — ticking a chain, typing an address —
+   goes through a full innerHTML swap, which would build a fresh <video> and
+   restart the walkthrough from zero. Carry the position across the swap, and
+   only into the same variant, so switching short<->full still starts that one
+   from its own beginning. */
+function captureVideo() {
+  const v = $('.ob-video-el');
+  if (!v) return null;
+  return { mode: v.dataset.mode, t: v.currentTime, paused: v.paused };
+}
+function restoreVideo(prev) {
+  if (!prev || !(prev.t > 0.05) || !isFinite(prev.t)) return;
+  const v = $('.ob-video-el');
+  if (!v || v.dataset.mode !== prev.mode) return;
+  const apply = () => {
+    try { v.currentTime = prev.t; } catch (_) { /* not seekable yet */ }
+    if (!prev.paused) { const p = v.play(); if (p) p.catch(() => {}); }
+  };
+  if (v.readyState >= 1) apply();
+  else v.addEventListener('loadedmetadata', apply, { once: true });
+}
+
 function render() {
   if (state.status === 'error') { app.innerHTML = navH() + errorCardH() + footH(); return; }
   if (state.status === 'loading' && state.screen === 'boot') return;   // keep splash
@@ -3115,7 +3139,9 @@ function render() {
     case 'accessibility': body = accessibilityH(); break;
     default: body = buildH();
   }
+  const video = captureVideo();
   app.innerHTML = (isApp ? navH() : '') + body + (isApp ? footH() : '');
+  restoreVideo(video);
   bindScreen();
 }
 
