@@ -101,6 +101,20 @@ Downloading is done via the il-supermarket-scraper library (PyPI).
     computes the next typical 4h window (no Shabbat) from CHAIN_META.speed;
   * merged products keep aliases → byKey maps alias keys too, so saved lists
     survive consolidation.
+  * extension search (extension/chains/*.js + panel.js): a chain's search key is
+    not always the barcode. Shufersal searches by its INTERNAL product code,
+    which equals the EAN for most items but is a short number for a legacy
+    family — the tile reads data-product-code="P_66295" while the transparency
+    file publishes 7290000066295, so the barcode search returned nothing for 882
+    of its 13,953 barcoded rows. The panel walks a term ladder (EAN -> cfg
+    .altCodes(ean) -> product name) and prefers the tile whose cfg.tileCode
+    matches, refusing to add anything when codes are visible and none match —
+    previously it added whichever product ranked first, which the name fallback
+    made risky. altCodes stops below four digits on purpose: "22" stops being a
+    code lookup and returns מוצרלה 22%. Verified live per chain — רמי לוי indexes
+    full EANs and needs no alternative; both hooks are opt-in per adapter.
+    Bump manifest version and rebuild extension.zip after touching either, then
+    upload it to the Web Store by hand. Tests: tests/test_extension_chains.py.
   * extension promo (extensionPromoH): EXTENSION_URL points at the published
     Chrome Web Store listing by id — the bare /detail/<id> form redirects to the
     slugged URL, and the ?authuser/?hl params the dashboard hands you are

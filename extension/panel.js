@@ -7,10 +7,10 @@
   const cfg = window.SLIM_CHAIN;
   if (!cfg || !chrome?.storage) return;
 
-  const { handoff, progress = {}, progressTriedName: triedNameStored = {} } =
-    await chrome.storage.local.get(['handoff', 'progress', 'progressTriedName']);
-  const triedNameMap = progress.id === handoff?.id ? triedNameStored : {};
-  const progressTriedName = () => triedNameMap;
+  const { handoff, progress = {}, progressTerm: termStored = {} } =
+    await chrome.storage.local.get(['handoff', 'progress', 'progressTerm']);
+  const termMap = progress.id === handoff?.id ? termStored : {};
+  const progressTerm = () => termMap;
   if (!handoff || !Array.isArray(handoff.items) || !handoff.items.length) return;
   if (handoff.chain !== cfg.label) return;         // a different chain was chosen
   if (progress.dismissed === handoff.id) return;   // user closed the panel for this handoff
@@ -115,9 +115,28 @@
     state.idx = handoff.items.length; save(); render(); return false;
   }
 
-  function goSearch(item) {
-    const term = (cfg.barcodeSearch && item.ean) ? item.ean : item.name;
-    location.href = cfg.searchUrl(term);
+  /* What to type into the chain's search, best first. The EAN is the precise
+     key where the chain indexes it; altCodes covers chains whose internal code
+     differs from the barcode for some items; the name is the last resort. */
+  function searchTerms(item) {
+    const terms = [];
+    if (cfg.barcodeSearch && item.ean) {
+      terms.push(item.ean);
+      if (typeof cfg.altCodes === 'function') {
+        for (const alt of cfg.altCodes(item.ean) || []) if (alt) terms.push(alt);
+      }
+    }
+    if (item.name) terms.push(item.name);
+    return terms.length ? terms : [item.name || ''];
+  }
+
+  function goSearch(item, step = 0) {
+    const terms = searchTerms(item);
+    const i = Math.min(step, terms.length - 1);
+    const map = progressTerm();
+    map[state.idx] = i;
+    chrome.storage.local.set({ progressTerm: map });
+    location.href = cfg.searchUrl(terms[i]);
   }
 
   const sleep = ms => new Promise(r => setTimeout(r, ms));
@@ -133,6 +152,35 @@
     return null;
   }
 
+  async function waitForAll(selectors, timeout = 9000) {
+    const t0 = Date.now();
+    while (Date.now() - t0 < timeout) {
+      for (const sel of selectors) {
+        const els = document.querySelectorAll(sel);
+        if (els.length) return [...els];
+      }
+      await sleep(300);
+    }
+    return [];
+  }
+
+  /* Prefer the tile whose internal code matches what we asked for. Without this
+     the panel added whichever product happened to rank first, which is a real
+     risk on the name fallback and on any short-code search. Chains that expose
+     no code keep the old behaviour: first tile. */
+  function pickTile(tiles, item) {
+    if (typeof cfg.tileCode !== 'function') return tiles[0];
+    const wanted = new Set(searchTerms(item).filter(t => /^\d+$/.test(t)));
+    if (!wanted.size) return tiles[0];
+    let sawAnyCode = false;
+    for (const t of tiles) {
+      const code = cfg.tileCode(t);
+      if (code) sawAnyCode = true;
+      if (code && wanted.has(String(code))) return t;
+    }
+    return sawAnyCode ? null : tiles[0];
+  }
+
   function setStatus(msg) {
     const el = document.getElementById('slimStatus');
     if (el) el.textContent = msg;
@@ -143,19 +191,24 @@
     const item = current();
     if (!item) return;
     setStatus('מחפש את המוצר בדף…');
-    const tile = await waitFor(cfg.tileSelectors);
-    if (!tile) {
-      // barcode search found nothing — retry once by product name
-      const triedName = progressTriedName();
-      if (cfg.barcodeSearch && item.ean && !triedName[state.idx] &&
-          location.href.includes(item.ean)) {
-        triedName[state.idx] = true;
-        await chrome.storage.local.set({ progressTriedName: triedName });
-        setStatus('לא נמצא לפי ברקוד — מנסה לפי שם…');
-        location.href = cfg.searchUrl(item.name);
+    const tiles = await waitForAll(cfg.tileSelectors);
+    if (!tiles.length) {
+      // nothing found — walk down the term ladder before giving up
+      const terms = searchTerms(item);
+      const step = (progressTerm()[state.idx] || 0) + 1;
+      if (step < terms.length) {
+        setStatus(step === terms.length - 1
+          ? 'לא נמצא לפי ברקוד — מנסה לפי שם…'
+          : 'לא נמצא לפי ברקוד — מנסה קוד פנימי…');
+        goSearch(item, step);
         return;
       }
       setStatus('לא נמצאו תוצאות — הוסיפו ידנית או דלגו');
+      return;
+    }
+    const tile = pickTile(tiles, item);
+    if (!tile) {
+      setStatus('נמצאו תוצאות אך אף אחת לא תואמת את המוצר — הוסיפו ידנית או דלגו');
       return;
     }
     let addBtn = null;
