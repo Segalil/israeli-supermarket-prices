@@ -70,3 +70,15 @@ def test_promo_is_gated_in_every_render_path():
     assert "canInstallExtension()" in block, \
         "extensionPromoH must consult canInstallExtension before rendering"
     assert "hasExtension()" in block, "and still hide itself once installed"
+
+
+def test_handoff_sends_the_target_chains_own_code(out):
+    """A merged product carries every source key as an alias; the code the
+    TARGET chain files it under must win over another chain's EAN. Rami Levy's
+    own site resolves its banana as 134, not as Shufersal's 7290000964775."""
+    codes = out["codes"]
+    assert codes["ramiLevy"] == "134"
+    assert codes["yochananof"] == "623"
+    assert codes["shufersal"] == "7290000964775", "no scoped alias -> fall back to the EAN"
+    assert codes["nameScopedIgnored"] is None, "a name-keyed scoped alias is not a code"
+    assert codes["noCodeAtAll"] is None

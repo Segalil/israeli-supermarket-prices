@@ -304,6 +304,21 @@ function productEan(pr) {
   for (const a of pr.al || []) if (/^\d{8,}$/.test(a)) return a;
   return null;
 }
+/* The code THIS chain knows the product by. A merged product carries every
+   source key as an alias, and for items the chain files without a real EAN the
+   alias is chain-scoped — "רמי לוי:134" is what its own site resolves for a
+   banana, while the merged key is another chain's 7290000964775. Searching a
+   chain for a sibling chain's code is how produce came back empty. */
+function productCodeFor(pr, label) {
+  const scoped = label + ':';
+  for (const k of [pr.k, ...(pr.al || [])]) {
+    if (k.startsWith(scoped)) {
+      const code = k.slice(scoped.length);
+      if (/^\d+$/.test(code)) return code;
+    }
+  }
+  return productEan(pr);
+}
 function productEmoji(pr) {
   for (const [kw, emoji] of EMOJI_RULES) if (pr.n.includes(kw)) return emoji;
   return null;
@@ -2613,9 +2628,9 @@ function basketH() {
   const m = meta(label);
   const lines = t.items.filter(({ pr }) => priceAt(pr, label) != null);
   const linesH = lines.map(({ pr, qty }) => {
-    const ean = productEan(pr);
+    const code = productCodeFor(pr, label);
     const link = m.search
-      ? `<a class="line-link" href="${m.search(m.barcode && ean ? ean : pr.n)}" target="_blank" rel="noopener">חיפוש בחנות ↗</a>` : '';
+      ? `<a class="line-link" href="${m.search(m.barcode && code ? code : pr.n)}" target="_blank" rel="noopener">חיפוש בחנות ↗</a>` : '';
     const base = priceAt(pr, label), cost = lineCost(pr, label, qty);
     const promo = promoAt(pr, label);
     const priceH = cost < base * qty - 0.005
@@ -3453,12 +3468,14 @@ function doHandoff(label) {
       date: state.date,
       total,
       items: [
-        ...lines.map(({ pr, qty }) => ({ name: pr.n, qty, ean: productEan(pr) })),
-        ...subsAccepted.map(pr => ({ name: pr.n, qty: 1, ean: productEan(pr) })),
+        ...lines.map(({ pr, qty }) => ({ name: pr.n, qty, ean: productEan(pr),
+          code: productCodeFor(pr, label) })),
+        ...subsAccepted.map(pr => ({ name: pr.n, qty: 1, ean: productEan(pr),
+          code: productCodeFor(pr, label) })),
         // the rest of the list too — not in this chain's catalog, but the
         // extension shows them for a manual attempt (data can lag the shelf)
         ...r.missing.map(pr => ({ name: pr.n, qty: state.list.get(pr.k) || 1,
-          ean: productEan(pr), missing: true })),
+          ean: productEan(pr), code: productCodeFor(pr, label), missing: true })),
       ],
     };
     localStorage.setItem('slim-handoff-v1', JSON.stringify(payload));

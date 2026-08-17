@@ -120,14 +120,33 @@
      differs from the barcode for some items; the name is the last resort. */
   function searchTerms(item) {
     const terms = [];
-    if (cfg.barcodeSearch && item.ean) {
-      terms.push(item.ean);
-      if (typeof cfg.altCodes === 'function') {
-        for (const alt of cfg.altCodes(item.ean) || []) if (alt) terms.push(alt);
+    if (cfg.barcodeSearch) {
+      // item.code is the code THIS chain files the product under (produce and
+      // other no-EAN items are chain-scoped) — it outranks the generic EAN,
+      // which may belong to a different chain's listing of the merged product
+      if (item.code) terms.push(String(item.code));
+      if (item.ean && String(item.ean) !== String(item.code)) terms.push(String(item.ean));
+      if (typeof cfg.altCodes === 'function' && item.ean) {
+        for (const alt of cfg.altCodes(item.ean) || []) {
+          if (alt && !terms.includes(String(alt))) terms.push(String(alt));
+        }
       }
     }
     if (item.name) terms.push(item.name);
     return terms.length ? terms : [item.name || ''];
+  }
+
+  /* On the NAME step of chains that expose no tile code there is nothing to
+     verify against, and the first tile can be a different product entirely —
+     a search for "משקה סויה אלטרנטיב" leads with soy SAUCE. Require the tile's
+     text to share most of the item's meaningful words before auto-adding. */
+  function nameMatchesTile(tile, item) {
+    const words = String(item.name || '').split(/\s+/)
+      .filter(w => w.length >= 3 && !/^[\d.,%*]+$/.test(w));
+    if (!words.length) return true;
+    const text = (tile.textContent || '');
+    const hit = words.filter(w => text.includes(w)).length;
+    return hit >= Math.max(1, Math.ceil(words.length / 2));
   }
 
   function goSearch(item, step = 0) {
@@ -209,6 +228,12 @@
     const tile = pickTile(tiles, item);
     if (!tile) {
       setStatus('נמצאו תוצאות אך אף אחת לא תואמת את המוצר — הוסיפו ידנית או דלגו');
+      return;
+    }
+    const terms = searchTerms(item);
+    const onNameStep = (progressTerm()[state.idx] || 0) >= terms.length - 1 && !!item.name;
+    if (onNameStep && typeof cfg.tileCode !== 'function' && !nameMatchesTile(tile, item)) {
+      setStatus('התוצאות לא נראות כמו המוצר — הוסיפו ידנית או דלגו');
       return;
     }
     let addBtn = null;

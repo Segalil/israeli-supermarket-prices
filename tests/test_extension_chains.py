@@ -71,3 +71,14 @@ def test_panel_walks_the_term_ladder_and_verifies_the_tile():
     assert "if (typeof cfg.tileCode !== 'function') return tiles[0];" in panel
     # and a mismatch must refuse rather than add the wrong product
     assert "return sawAnyCode ? null : tiles[0];" in panel
+
+
+def test_panel_prefers_the_chain_code_and_guards_the_name_step():
+    panel = open(PANEL, encoding="utf-8").read()
+    block = panel[panel.index("function searchTerms("):]
+    block = block[:block.index("\n  }") + 4]
+    assert block.index("item.code") < block.index("item.ean"), \
+        "the chain's own code must be tried before the generic EAN"
+    assert "function nameMatchesTile(" in panel, "the name-step guard is gone"
+    assert "onNameStep && typeof cfg.tileCode !== 'function'" in panel, \
+        "the guard must apply exactly where nothing else verifies the tile"

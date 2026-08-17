@@ -2,7 +2,8 @@
    which is the only way to test Safari/Firefox from a Chromium test runner. */
 'use strict';
 const loadApp = require('./load_app');
-const { canInstallExtension, EXTENSION_URL } = loadApp(['canInstallExtension', 'EXTENSION_URL']);
+const { canInstallExtension, EXTENSION_URL, productCodeFor } =
+  loadApp(['canInstallExtension', 'EXTENSION_URL', 'productCodeFor']);
 
 const UA = {
   chrome:  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
@@ -34,4 +35,13 @@ const cases = {
   chromeOnIOS:       canInstallExtension({ userAgent: UA.criOS }),
   empty:             canInstallExtension({}),
 };
-process.stdout.write(JSON.stringify({ cases, url: EXTENSION_URL }, null, 1));
+/* a merged banana: Shufersal's EAN is the key, the others are chain-scoped */
+const banana = { k: '7290000964775', al: ['יוחננוף:623', 'רמי לוי:134'], n: 'בננה' };
+const codes = {
+  ramiLevy: productCodeFor(banana, 'רמי לוי'),
+  yochananof: productCodeFor(banana, 'יוחננוף'),
+  shufersal: productCodeFor(banana, 'שופרסל'),      // no scoped alias -> the EAN
+  nameScopedIgnored: productCodeFor({ k: 'רמי לוי:במבה', al: [], n: 'במבה' }, 'רמי לוי'),
+  noCodeAtAll: productCodeFor({ k: 'n:xyz', al: [], n: 'xyz' }, 'רמי לוי'),
+};
+process.stdout.write(JSON.stringify({ cases, url: EXTENSION_URL, codes }, null, 1));

@@ -120,6 +120,17 @@ Downloading is done via the il-supermarket-scraper library (PyPI).
     made risky. altCodes stops below four digits on purpose: "22" stops being a
     code lookup and returns מוצרלה 22%. Verified live per chain — רמי לוי indexes
     full EANs and needs no alternative; both hooks are opt-in per adapter.
+    The handoff also sends item.code = productCodeFor(pr, chain): the code the
+    TARGET chain files the product under. A merged product's aliases carry
+    chain-scoped keys ("רמי לוי:134" is a banana on their own site) and the
+    generic EAN may belong to a sibling chain's listing — searching רמי לוי for
+    Shufersal's 7290000964775 returned nothing while 134 resolves exactly.
+    Verified against their /api/catalog. On the NAME step of a chain with no
+    tileCode, nameMatchesTile requires token overlap before auto-adding ("משקה
+    סויה אלטרנטיב" leads with soy SAUCE there). KNOWN LIMIT, not a bug: some
+    transparency-file rows simply do not exist in the chain's ONLINE catalog
+    (משק ויילר tofu, the 6*40 bamba pack at רמי לוי) — no code finds those, the
+    panel honestly reports no results.
     Bump manifest version and rebuild extension.zip after touching either, then
     upload it to the Web Store by hand. Tests: tests/test_extension_chains.py.
   * extension promo (extensionPromoH): EXTENSION_URL points at the published
