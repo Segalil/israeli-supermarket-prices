@@ -3464,6 +3464,7 @@ function doHandoff(label) {
   try {
     const payload = {
       id: Date.now().toString(36),
+      ts: Date.now(),
       chain: label,
       date: state.date,
       total,
@@ -3481,7 +3482,18 @@ function doHandoff(label) {
     localStorage.setItem('slim-handoff-v1', JSON.stringify(payload));
     window.dispatchEvent(new Event('slim-handoff'));
   } catch (_) {}
-  if (m.home) window.open(m.home, '_blank', 'noopener');
+  // With the extension installed, open the FIRST item's search page so its
+  // panel lands ready to add — the homepage left it waiting for a click that
+  // the shopper already made here. Without the extension the homepage stays:
+  // a search page without the panel would just be confusing.
+  const firstItem = lines.length
+    ? { pr: lines[0].pr } : (subsAccepted.length ? { pr: subsAccepted[0] } : null);
+  if (hasExtension() && m.search && firstItem) {
+    const q = productCodeFor(firstItem.pr, label) || firstItem.pr.n;
+    window.open(m.search(q), '_blank', 'noopener');
+  } else if (m.home) {
+    window.open(m.home, '_blank', 'noopener');
+  }
   state.orders.unshift({ store: label, date: state.date || new Date().toISOString().slice(0, 10),
     count: lines.length + subsAccepted.length, total,
     items: [...lines.map(({ pr, qty }) => [pr.k, qty]),

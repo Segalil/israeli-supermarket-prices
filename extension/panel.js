@@ -15,10 +15,19 @@
   if (handoff.chain !== cfg.label) return;         // a different chain was chosen
   if (progress.dismissed === handoff.id) return;   // user closed the panel for this handoff
 
+  /* The shopper already said "fill my cart" by clicking the handoff button on
+     the site — making them press ▶ again in the new tab is where the flow died.
+     A handoff the panel has never seen, arriving within minutes of that click,
+     starts the walk by itself; an old one (browsing the chain days later)
+     renders passively exactly as before. */
+  const bornAt = Number(handoff.ts) || parseInt(handoff.id, 36);
+  const freshHandoff = progress.id !== handoff.id &&
+    Number.isFinite(bornAt) && Math.abs(Date.now() - bornAt) < 15 * 60 * 1000;
+
   const state = {
     idx: progress.id === handoff.id ? (progress.idx || 0) : 0,
     done: progress.id === handoff.id ? (progress.done || {}) : {},
-    auto: progress.id === handoff.id ? !!progress.auto : false,
+    auto: progress.id === handoff.id ? !!progress.auto : freshHandoff,
     listOpen: false,
   };
   // items the chain's catalog doesn't carry ride along for a manual attempt —
@@ -45,7 +54,7 @@
   }
   function itemListText() {
     return handoff.items.map((it, i) =>
-      `${i + 1}. ${it.name} — ${it.ean ? 'מק"ט ' + it.ean : 'ללא מק"ט'} — ×${it.qty}` +
+      `${i + 1}. ${it.name} — ${(it.code || it.ean) ? 'מק"ט ' + (it.code || it.ean) : 'ללא מק"ט'} — ×${it.qty}` +
       (it.missing ? ' (לא נמצא בקטלוג הרשת)' : '')).join('\n');
   }
 
@@ -290,7 +299,7 @@
     } else if (act === 'row-copy') {
       const it = handoff.items[+btn.dataset.i];
       if (it) {
-        copyText(it.ean || it.name);
+        copyText(it.code || it.ean || it.name);
         btn.textContent = '✓';
         setTimeout(() => { btn.textContent = '⧉'; }, 1200);
       }
@@ -309,8 +318,11 @@
 
   // resume on a pending item (missing-at-chain items arrive pre-skipped)
   if (state.done[state.idx]) advance(); else render();
-  /* arriving on a search page mid-run (after goSearch navigation) */
-  if (state.auto && cfg.isSearchPage() && doneCount() < handoff.items.length) {
-    tryAutoAdd();
+  if (freshHandoff) save();                        // persist the auto-start
+  /* arriving on a search page mid-run (after goSearch navigation) — or landing
+     anywhere on the chain's site with a fresh auto run that has yet to move */
+  if (state.auto && doneCount() < handoff.items.length) {
+    if (cfg.isSearchPage()) tryAutoAdd();
+    else goSearch(current());
   }
 })();

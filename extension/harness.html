@@ -35,9 +35,9 @@ window.chrome = {
   runtime: { getManifest: () => ({ version: 'harness' }) },
 };
 localStorage.setItem('slim-handoff-v1', JSON.stringify({
-  id: 'test-' + Date.now(), chain: 'שופרסל', date: '2026-08-11', total: 123,
+  id: 'test-' + Date.now(), ts: Date.now(), chain: 'שופרסל', date: '2026-08-11', total: 123,
   items: [
-    { name: 'חלב תנובה 3% 1 ליטר', qty: 2, ean: '7290000042435' },
+    { name: 'חלב תנובה 3% 1 ליטר', qty: 2, ean: '7290000042435', code: '42435' },
     { name: 'לחם אחיד פרוס', qty: 1, ean: '7290000123456' },
     { name: 'פטרוזיליה צרור', qty: 1, ean: null },
     { name: 'מוצר שאין ברשת הזו', qty: 3, ean: '7290999999999', missing: true },

@@ -131,6 +131,13 @@ Downloading is done via the il-supermarket-scraper library (PyPI).
     transparency-file rows simply do not exist in the chain's ONLINE catalog
     (משק ויילר tofu, the 6*40 bamba pack at רמי לוי) — no code finds those, the
     panel honestly reports no results.
+    THE WALK AUTO-STARTS on a fresh handoff: clicking מילוי העגלה on the site
+    is the consent, so a handoff the panel has never seen and younger than 15
+    minutes (handoff.ts, else parseInt(id,36)) sets auto=true and moves — on a
+    search page it adds, anywhere else it navigates to the current item's
+    search. Old handoffs render passively, exactly as before. With the
+    extension installed the SITE opens the first item's search page instead of
+    the chain homepage (hasExtension() && m.search), so the panel lands ready.
     Bump manifest version and rebuild extension.zip after touching either, then
     upload it to the Web Store by hand. Tests: tests/test_extension_chains.py.
   * extension promo (extensionPromoH): EXTENSION_URL points at the published

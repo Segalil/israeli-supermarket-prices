@@ -82,3 +82,28 @@ def test_panel_prefers_the_chain_code_and_guards_the_name_step():
     assert "function nameMatchesTile(" in panel, "the name-step guard is gone"
     assert "onNameStep && typeof cfg.tileCode !== 'function'" in panel, \
         "the guard must apply exactly where nothing else verifies the tile"
+
+
+def test_fresh_handoff_starts_the_walk_by_itself():
+    """Clicking "מילוי העגלה" on the site is the shopper's consent; parking a
+    passive panel in the new tab until they press ▶ again is where the flow
+    used to die. A handoff the panel has never seen, minutes old, auto-starts;
+    an old one still renders passively."""
+    panel = open(PANEL, encoding="utf-8").read()
+    assert "freshHandoff" in panel
+    assert "15 * 60 * 1000" in panel, "the freshness window is gone"
+    assert "progress.id !== handoff.id" in panel, \
+        "freshness must require a handoff the panel has not seen"
+    boot = panel[panel.rindex("resume on a pending item"):]
+    assert "if (cfg.isSearchPage()) tryAutoAdd();" in boot
+    assert "else goSearch(current());" in boot, \
+        "landing on a non-search page with a fresh auto run must navigate"
+
+
+def test_site_opens_the_first_items_search_when_extension_installed():
+    app = open(os.path.join(ROOT, "site", "app.js"), encoding="utf-8").read()
+    tail = app[app.index("slim-handoff-v1"):]
+    assert "hasExtension() && m.search && firstItem" in tail, \
+        "with the extension installed the handoff must land on a search page"
+    assert '"ts": Date.now()' in app or "ts: Date.now()" in app, \
+        "the handoff must carry the timestamp the freshness gate reads"
