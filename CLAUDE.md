@@ -103,8 +103,18 @@ Downloading is done via the il-supermarket-scraper library (PyPI).
     apply). dealSuggestions() powers the "השלמת מבצעים" card in the basket
     (complete a partial bundle, shows extra cost vs bundle saving) and the 💡
     potential-savings hint on results cards;
-  * product images: lazy OpenFoodFacts lookups by EAN (imgCache in localStorage,
-    max 4 concurrent), emoji keyword fallback (EMOJI_RULES), letter avatar last;
+  * product images: a lazy ladder per EAN (imgCache in localStorage, max 4
+    concurrent) — chain CDN first, then OpenFoodFacts, then emoji keyword
+    fallback (EMOJI_RULES), letter avatar last. Measured on 120 random
+    catalogue barcodes: OFF carries 1% (Israeli products barely register),
+    רמי לוי's public CDN img.rami-levy.co.il/product/<EAN>/small.jpg carries
+    52% — exact by construction (the chain photographs what it sells), ~10KB,
+    403 on unknown codes so onerror chains; requests go out no-referrer. Other
+    chains embed underivable internal ids in their image paths (Shufersal a
+    category prefix + SKU, Victory/חצי חינם an internal id + timestamp), so
+    they cannot join the ladder without an API hop their CORS blocks. The
+    attribution lives in the in-app terms AND privacy.html — keep both in step
+    with CHAIN_IMG_SOURCES. Tests: tests/test_product_images.py;
   * address autocomplete: Photon (OSM) with lang=default + Israel bbox; picking
     a suggestion stores addressCity, which drives deliveryStatus();
   * delivery coverage per chain: CHAIN_META.delivery = 'nationwide' | [cities]
