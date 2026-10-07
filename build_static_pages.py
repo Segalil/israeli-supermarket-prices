@@ -16,7 +16,8 @@ import os
 import sys
 import time
 
-from israeli_prices.static_pages import STATIC_PAGES_NOINDEX, generate
+from israeli_prices import static_pages as sp
+from israeli_prices.static_pages import STATIC_PAGES_NOINDEX, GenerationError, generate
 
 
 def main(argv=None):
@@ -34,26 +35,40 @@ def main(argv=None):
         print(f"No dataset at {products}. Run build_site_data.py first.", file=sys.stderr)
         return 1
     started = time.time()
+    # generate() validates the inputs (snapshot history, a non-empty page
+    # selection) BEFORE it removes the previous output, so a failed run leaves
+    # the live pages in place.
     try:
         stats = generate(site_dir=args.site, data_dir=args.data_dir, products_path=products)
+    except GenerationError as exc:
+        print(f"static pages not written: {exc}", file=sys.stderr)
+        return 1
     except Exception as exc:                      # surface any failure as a non-zero exit
         print(f"static pages failed: {exc!r}", file=sys.stderr)
         return 1
 
     excluded = {k[len("excluded_"):]: v for k, v in sorted(stats.items())
                 if k.startswith("excluded_")}
-    print(f"date     : {stats['date']} ({stats['snapshot_days']} snapshot days read)")
-    print(f"entered  : {stats['entered']:,} barcodes (>= 5 chains on >= 3 days in 180 days); "
-          f"{stats['entered_in_today_file']:,} in today's file, "
-          f"{stats['entered_missing_today']:,} not")
-    print(f"kept     : {stats['kept']:,} (>= 2 clean chain prices today); "
-          f"{stats['dropped_below_keep']:,} dropped below that")
+    n = stats.get
+    print(f"date     : {stats['date']} ({n('snapshot_days', 0)} snapshot days read)")
+    print(f"entered  : {n('entered', 0):,} barcodes (>= {sp.MIN_ENTER_CHAINS} chains on "
+          f">= {sp.ENTER_MIN_DAYS} days in {sp.ENTER_WINDOW_DAYS} days); "
+          f"{n('entered_in_today_file', 0):,} in today's file, "
+          f"{n('entered_missing_today', 0):,} not")
+    print(f"kept     : {n('kept', 0):,} (>= {sp.KEEP_MIN_CHAINS} clean chain prices today); "
+          f"{n('dropped_below_keep', 0):,} dropped below that")
     print(f"excluded : {sum(excluded.values()):,} "
           f"({', '.join(f'{k} {v}' for k, v in excluded.items()) or 'none'})")
-    print(f"alcohol  : {stats['alcohol_no_promo_text']:,} pages without promo text")
-    print(f"outliers : {stats['outlier_prices_hidden']:,} chain prices hidden")
-    print(f"changed  : {stats['changed_since_previous']:,} products since the previous snapshot")
-    print(f"pages    : {stats['product_pages']:,} product + {stats['category_pages']} category "
+    print(f"alcohol  : {n('alcohol_no_promo_text', 0):,} pages without promo text")
+    print(f"promos   : {n('storewide_promos_hidden', 0):,} store-wide offers hidden "
+          f"({n('storewide_promo_descriptions', 0)} descriptions carried by "
+          f"> {sp.STOREWIDE_PROMO_MIN} products, plus spend-threshold/gift wording)")
+    print(f"sizes    : {n('size_conflict_hidden', 0):,} pages without size/per-unit "
+          "(the name states another size)")
+    print(f"outliers : {n('outlier_prices_hidden', 0):,} chain prices hidden")
+    print(f"changed  : {n('changed_since_previous', 0):,} products since the previous snapshot; "
+          f"{n('no_observed_change', 0):,} pages with no observed change (no lastmod)")
+    print(f"pages    : {n('product_pages', 0):,} product + {stats['category_pages']} category "
           f"+ hub + /en/ = {stats['files'] - 1:,} pages, sitemap"
           f"{' EMPTY (noindex)' if stats['noindex'] else ''}")
     print(f"output   : {stats['bytes'] / 1024 / 1024:.1f} MB under {args.site}/ "

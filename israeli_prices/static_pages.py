@@ -70,6 +70,21 @@ CHANGES_CAP = 30            # products listed under "changed since last update"
 RELATED_MAX = 8
 ITEMLIST_MAX = 100
 PARTIAL_FILE_RATIO = 0.8    # today's rows vs the median of the last 7 files
+# A promo description one chain attaches to more than this many products in
+# today's dataset is a store-wide offer (spend thresholds, meal-voucher gifts),
+# not a deal on the product. Measured 2026-10-06 per (chain, description): the
+# top counts are 6,515 / 1,571 / 597 (store-wide gifts and vouchers), then
+# 222 / 212 / 143 (real category deals: "30% on face care", an Osem coupon).
+# 300 sits in that gap.
+STOREWIDE_PROMO_MIN = 300
+# ... and descriptions that state a spend threshold or a shekel gift are
+# store-wide whatever their count.
+_SHEKEL = r'(?:ש\s*"?\s*ח|ש״ח|₪)'
+STOREWIDE_PROMO_RE = re.compile(
+    r"\d+\s*" + _SHEKEL + r"\s*ומעלה"         # "599שח ומעלה-מתנה לבחירה"
+    r"|בקני(?:י)?ה\s+(?:של\s+)?מעל"          # "בקנייה מעל 200 ש"ח"
+    r"|מעל\s*\d+\s*" + _SHEKEL +              # "מתנה בקנייה מעל 300 ₪"
+    r"|\d+\s*" + _SHEKEL + r"\s*מתנה")        # "קופון 50ש"ח מתנה"
 
 CATEGORY_SLUGS = {1: "produce", 2: "dairy", 3: "meat-fish", 4: "bakery",
                   5: "pantry", 6: "snacks", 7: "drinks", 8: "frozen",
@@ -79,9 +94,12 @@ CATEGORY_SLUGS = {1: "produce", 2: "dairy", 3: "meat-fish", 4: "bakery",
 FIXED_CHAINS = ["שופרסל", "רמי לוי", "ויקטורי", "יינות ביתן / קרפור",
                 "יוחננוף", "אושר עד", "חצי חינם"]
 ONLINE, BRANCH = "online", "branch"
-STORE_TYPES = {"שופרסל": ONLINE, "רמי לוי": ONLINE, "יינות ביתן / קרפור": ONLINE,
-               "ויקטורי": ONLINE, "חצי חינם": ONLINE,
-               "יוחננוף": BRANCH, "אושר עד": BRANCH}
+# Where each chain's prices come from: its online store, or (when the stores
+# file names no online store) one representative branch. Shared with
+# stamp_static.py, which stamps the same split into index.html / llms.txt.
+ONLINE_STORE = ("שופרסל", "רמי לוי", "יינות ביתן / קרפור", "ויקטורי", "חצי חינם")
+BRANCH_STORE = ("יוחננוף", "אושר עד")
+STORE_TYPES = {**{c: ONLINE for c in ONLINE_STORE}, **{c: BRANCH for c in BRANCH_STORE}}
 STORE_TYPE_HE = {ONLINE: "אונליין", BRANCH: "סניף"}
 STORE_TYPE_HE_LONG = {ONLINE: "חנות אונליין", BRANCH: "סניף מייצג"}
 STORE_TYPE_EN = {ONLINE: "online store", BRANCH: "representative branch"}
@@ -123,21 +141,62 @@ EN_STAPLES = {
 # entries match as consecutive tokens.
 # "סיגר"/"סיגרים" are left out on purpose: in a supermarket they are filled
 # pastries ("סיגרים במילוי בשר", "עלי סיגר").
-TOBACCO_WORDS = ("סיגריות", "סיגריה", "טבק", "סיגריליות",
+#
+# Every word below was checked against ALL names in the 2026-10 catalogue; the
+# ones that also hit food or household goods were left out or guarded by a
+# NOT_* phrase (removed before matching). Rejected on that check:
+#   tobacco: "טיים" alone (kept only "טיים רד"), "פארטי" (ביסלי פארטי),
+#            "ווג" alone (פרוט אנד ווג' juice — guarded), "נקסט" (generic).
+#   alcohol: "גינס" (= ג'ינס jeans once quotes are dropped), "סגל" (a lipstick
+#            shade, grape juice), "כרמל" (52 hits incl. non-wine), "רוזה"
+#            (perfume), "תבור" (cheese, turkey), "סיידר" (tea infusions),
+#            "אבסולוט" (a hair product), "מכבי" (a cheese importer), "סירה"
+#            (socks), "מוסקט" (nutmeg), "רזרב"/"קלאסיק"/"סלקטד"/"אסטייט"
+#            (generic), "ציון" (jam), "באזז" (roll-on), "קדם" (grape juice),
+#            "מאלט" (non-alcoholic malt drinks).
+TOBACCO_WORDS = ("סיגריות", "סיגריה", "לסיגריות", "טבק", "סיגריליות",
                  "סיגרילוס", "נרגילה", "נרגילות", "מלבורו", "מרלבורו", "וינסטון",
                  "נובלס", "פרלמנט", "דובק", "פיליפ מוריס", "אייקוס", "iqos",
-                 "heets", "הייטס", "ניירות גלגול", "טבק לגלגול")
+                 "heets", "הייטס", "ניירות גלגול", "טבק לגלגול",
+                 "קנט", "קאמל", "כאמל", "l&m", "אל אם", "פאלמאל", "ווג",
+                 "טיים רד", "ניר", "נייר לגלגול", "פאקט")
 INFANT_FORMULA_WORDS = ("תמ\"ל", "תמל", "מטרנה", "סימילאק", "סימילק", "נוטרילון",
                         "אפטמיל", "נוטרימיגן", "אנפמיל", "רמדיה", "תחליף חלב אם",
                         "פורמולת תינוקות")
 PSEUDO_ITEM_WORDS = ("פיקדון", "פקדון", "דמי משלוח", "משלוח", "שקית קניות",
                      "שקית נשיאה", "שקית ניילון", "שקית רב פעמית", "שקיות קניות")
 PSEUDO_ITEM_EXACT = ("שקית", "שקיות")      # a name that is ONLY a bag
-ALCOHOL_WORDS = ("יין", "בירה", "בירות", "וודקה", "ודקה", "וויסקי", "ויסקי",
-                 "ערק", "ליקר", "ג'ין", "רום", "טקילה", "קאווה", "שמפניה",
-                 "קוניאק", "ברנדי", "מרטיני", "סאקה", "אלכוהול", "פרוסקו",
-                 "למברוסקו", "מוסקטו", "שרדונה", "סוביניון", "קברנה", "יקב",
-                 "יקבי", "אפרול", "קמפרי")
+ALCOHOL_WORDS = (
+    # generic
+    "יין", "יינות", "בירה", "בירות", "בירת", "וודקה", "ודקה", "וויסקי", "ויסקי",
+    "ערק", "עראק", "ליקר", "ג'ין", "רום", "טקילה", "קאווה", "שמפניה",
+    "קוניאק", "ברנדי", "מרטיני", "סאקה", "אלכוהול", "אלכהול", "פרוסקו",
+    "בורבון", "אוזו", "שנדי", "וינו", "יקב", "יקבי",
+    # wine styles and grape varieties
+    "למברוסקו", "מוסקטו", "מוסקאטו", "שרדונה", "סוביניון", "סובניון", "קברנה",
+    "מרלו", "שיראז", "שירז", "ריזלינג", "ריסלינג", "פינו", "גוורצטרמינר",
+    "מלבק", "זינפנדל", "קיאנטי", "סנגובזה", "סנגיובזה", "פטיט סירה", "אסטי",
+    "אדום יבש", "לבן יבש", "חצי יבש", "רוזה יבש",
+    # wineries and wine brands
+    "ברקן", "טפרברג", "רקנאטי", "דלתון", "גמלא", "הר חרמון", "הר תבור",
+    "ברטנורא", "כרמל מזרחי", "אמירים", "דון חוליו", "גאטו נגרו", "אימפרשן",
+    "אדלמה", "בלו נאן",
+    # beer and cider brands
+    "סומרסבי", "קופרברג", "סטלה", "סטלה ארטואה", "קורונה", "היינקן", "טובורג",
+    "קרלסברג", "גולדסטאר", "הוגרדן", "בקס", "לף", "פאולנר", "ויינשטפן",
+    # spirits and aperitifs
+    "סמירנוף", "פינלנדיה", "ג'וני ווקר", "גוני ווקר", "ג'ק דניאלס",
+    "ג'יימסון", "בלנטיינס", "שיבאס", "צ'יבס", "בייליס", "ביילס", "קמפרי",
+    "אפרול", "ייגרמייסטר", "בקרדי", "בריזר", "קפטן מורגן")
+# Phrases removed before matching: they contain an alcohol/tobacco word but
+# name something else ("קיט אנטיגן קורונה", spiced salami, rum flavouring,
+# a soft drink "with Riesling grapes", dried red pepper, a juice brand).
+NOT_ALCOHOL_PHRASES = ("אנטיגן קורונה", "סלמי קוניאק", "נקניק קוניאק",
+                       "תמצית רום", "טעם רום", "בטעם רום", "מולטי גין",
+                       "ענבי ריזלינג", "פלפל אדום יבש")
+# A name that says it is a soft drink or grape juice is not alcohol, whatever
+# else it carries ("משקה קל מרלו ענבים", "מיץ תירוש ענבים ... יקבי כרמל").
+NOT_ALCOHOL_NAMES = ("משקה קל", "תירוש", "מיץ ענבים")
 
 # Strings no generated file may contain (tests scan every file for them).
 BANNED_HE = ("הכי זול", "הזול ביותר", "הזולה", "זול ביותר", "המשתלם")
@@ -182,15 +241,23 @@ def has_banned_text(text):
     return any(b in low for b in BANNED_ALL)
 
 
-NOT_TOBACCO_PHRASES = ("אנטי טבק", "נגד טבק", "ריח טבק")   # air fresheners
+NOT_TOBACCO_PHRASES = ("אנטי טבק", "נגד טבק", "ריח טבק",   # air fresheners
+                       "פרי ניר", "ניר לח",                  # a brand; wet wipes
+                       "פרוט אנד ווג", "פרוט ווג")            # a juice brand
 _NOT_TOBACCO = _norm_terms(NOT_TOBACCO_PHRASES)
+_NOT_ALCOHOL = _norm_terms(NOT_ALCOHOL_PHRASES)
+_NOT_ALCOHOL_NAME = _norm_terms(NOT_ALCOHOL_NAMES)
+
+
+def _has_term_except(text, terms, not_phrases):
+    padded = " " + " ".join(name_tokens(text)) + " "
+    for phrase in not_phrases:
+        padded = padded.replace(" " + phrase + " ", " ")
+    return any(" " + t + " " in padded for t in terms)
 
 
 def _is_tobacco(text):
-    padded = " " + " ".join(name_tokens(text)) + " "
-    for phrase in _NOT_TOBACCO:
-        padded = padded.replace(" " + phrase + " ", " ")
-    return any(" " + t + " " in padded for t in _TOBACCO)
+    return _has_term_except(text, _TOBACCO, _NOT_TOBACCO)
 
 
 def exclusion_reason(name, brand=""):
@@ -208,8 +275,23 @@ def exclusion_reason(name, brand=""):
     return None
 
 
-def is_alcohol(name, brand=""):
-    return _has_term((name or "") + " " + (brand or ""), _ALCOHOL)
+# Chain names never count as product words: "יינות ביתן" is a retailer, and
+# its name can appear in that chain's promo descriptions.
+_CHAIN_NAME_PHRASES = _norm_terms(sorted(
+    {p.strip() for c in FIXED_CHAINS for p in c.split("/") if p.strip()} | set(FIXED_CHAINS),
+    key=len, reverse=True))
+
+
+def is_alcohol(name, brand="", promo_texts=()):
+    """Whole-word alcohol match on the name and brand — and on the product's
+    promo descriptions ("יינות תבור 2 ב 64" flags a wine whose own name is
+    just "מרלו הר תבור"), with chain names removed from those first."""
+    if _has_term(name, _NOT_ALCOHOL_NAME):
+        return False
+    if _has_term_except((name or "") + " " + (brand or ""), _ALCOHOL, _NOT_ALCOHOL):
+        return True
+    return any(_has_term_except(t, _ALCOHOL, _NOT_ALCOHOL + _CHAIN_NAME_PHRASES)
+               for t in promo_texts if t)
 
 
 # --- small formatting helpers ------------------------------------------------
@@ -312,6 +394,14 @@ def is_single_unit(unit):
     """True for the '1 יחידות' pseudo-size: sold per piece, no pack size."""
     sig = unit_signature(unit)
     return bool(sig) and sig[0] == "unit" and sig[1] <= 1
+
+
+def display_size(pr):
+    """The size to print for a product, or "": hidden for the '1 יחידות'
+    pseudo-size and when the name states a different size."""
+    if not pr.unit or is_single_unit(pr.unit) or getattr(pr, "size_conflict", False):
+        return ""
+    return pr.unit
 
 
 def name_with_size(name, unit):
@@ -525,7 +615,8 @@ def _promo_text(promo, shelf=None):
     if not desc or has_banned_text(desc):
         desc = "מבצע"
     details = []
-    if price is not None and (shelf is None or price < shelf - 0.004):
+    if price is not None and (shelf is None or price < shelf - 0.004) \
+            and deal_price_agrees(desc, price):
         details.append(f"{shekel(price)} ליחידה")
     if min_qty and min_qty > 1:
         details.append(f"בקנייה של {int(min_qty)}")
@@ -536,9 +627,130 @@ def _promo_text(promo, shelf=None):
     return desc, details
 
 
+# "2ב12.40", "2 ב 64", "3 ב-24.10": N units for X shekels. The lookbehind keeps
+# a longer number ("2202 ב 110") from matching from its middle.
+_DEAL_RE = re.compile(r"(?<![\d.])(\d{1,2})\s*ב\s*[-־]?\s*(\d+(?:\.\d+)?)")
+
+
+def deal_price_agrees(desc, unit_price):
+    """False when the description states "N ב X" and the per-unit price is
+    not X/N (the files' DiscountedPrice sometimes includes a bottle deposit,
+    so "2ב12.40 פקדון" can arrive as 6.50 a unit). Printing both would
+    contradict itself, so the caller then prints the description alone."""
+    for m in _DEAL_RE.finditer(desc or ""):
+        n, total = int(m.group(1)), float(m.group(2))
+        if n >= 1 and abs(total / n - unit_price) > 0.01:
+            return False
+    return True
+
+
+def promo_is_storewide(chain, desc, common=frozenset()):
+    """A store-wide offer (spend threshold, shekel gift, or a description the
+    chain attaches to more than STOREWIDE_PROMO_MIN products) — never shown
+    as a product's promo."""
+    desc = (desc or "").strip()
+    return (chain, desc) in common or bool(STOREWIDE_PROMO_RE.search(desc))
+
+
+def storewide_promos(data):
+    """{(chain, description)} carried by more than STOREWIDE_PROMO_MIN
+    products in today's dataset."""
+    chains = data["chains"]
+    counts = Counter()
+    for entry in data["products"]:
+        for i, pm in enumerate(entry[6] or []):
+            if pm and pm[1] and i < len(chains):
+                counts[(chains[i], pm[1].strip())] += 1
+    return frozenset(k for k, n in counts.items() if n > STOREWIDE_PROMO_MIN)
+
+
+def filter_promos(promos, chains, common):
+    """The promo list with store-wide offers removed (None in their slot)."""
+    return [None if (pm and promo_is_storewide(chains[i], pm[1], common)) else pm
+            for i, pm in enumerate(promos)]
+
+
+# A size stated in the NAME: number + unit word, optionally "N*" in front.
+_NAME_SIZE_RE = re.compile(
+    r"(?:(\d+)\s*[*xX×]\s*)?(\d+(?:\.\d+)?)\s*"
+    r"(ק(?:\"|״)?ג|קילוגרם|קילו|גרם|גר'?|ג'?|מ(?:\"|''|״)?ל|מיליליטר|ליטר|ל'?)"
+    r"(?![א-תA-Za-z0-9])")
+
+
+def _name_unit(word):
+    w = word.replace("'", "")
+    if w.startswith("קילו") or w.startswith("ק"):
+        return "g", 1000.0
+    if w.startswith("ג"):
+        return "g", 1.0
+    if w.startswith("מ"):
+        return "ml", 1.0
+    return "ml", 1000.0                       # ליטר / ל
+
+
+def name_sizes(name):
+    """[(kind, amount)] sizes the name states; "6*330 מ"ל" yields both 330 and
+    1980 ml (a multipack's size field may hold either)."""
+    out = []
+    for m in _NAME_SIZE_RE.finditer(name or ""):
+        kind, factor = _name_unit(m.group(3))
+        amount = float(m.group(2)) * factor
+        out.append((kind, round(amount, 3)))
+        if m.group(1):
+            out.append((kind, round(amount * int(m.group(1)), 3)))
+    return out
+
+
+SIZE_ROUNDING = 0.02        # "64.4 גר" in the name vs "64 גרם" in the field
+PACK_MAX = 24               # "1.5 ליטר שישייה" vs "9 ליטר": a pack of the stated size
+
+
+def size_conflict(name, unit):
+    """True when the name states a size (number + unit word) that the size
+    field contradicts — canned goods print the drained weight in the name and
+    the gross weight in the field ("עגבניות מרוסקות 600 גרם" / "800 גרם"), and
+    a page showing both contradicts itself. Only a measure-size field (g/ml)
+    is compared. Not a conflict: the same size within SIZE_ROUNDING (also
+    across g/ml — the files swap them for dairy and sauces), a whole
+    pack of a stated size (2..PACK_MAX of it), or the sum of the stated sizes
+    ("350גר+350ג" / "700 גרם")."""
+    sig = unit_signature(unit)
+    if not sig or sig[0] not in ("g", "ml"):
+        return False
+    stated = name_sizes(name)
+    if not stated:
+        return False
+    kind, field = sig
+
+    def same(a, b):
+        return abs(a - b) <= SIZE_ROUNDING * max(a, b)
+
+    # dairy and sauces swap grams and millilitres freely ("150 מ"ל" in the
+    # name, "150 גרם" in the field): the same number is not a contradiction
+    if any(k != kind and same(a, field) for k, a in stated):
+        return False
+    same_kind = [a for k, a in stated if k == kind]
+    for a in same_kind:
+        if same(a, field):
+            return False
+        n = round(field / a) if a else 0
+        if 2 <= n <= PACK_MAX and same(a * n, field):
+            return False
+    if len(same_kind) > 1 and same(sum(same_kind), field):
+        return False
+    return True
+
+
 class Product:
     __slots__ = ("key", "name", "unit", "brand", "cat", "prices", "shown",
-                 "promos", "alcohol", "lastmod", "changed", "history", "title_name")
+                 "promos", "alcohol", "history", "title_name", "size_conflict",
+                 "price_changed", "content_modified")
+    # price_changed: the newest snapshot on which a shown chain's SHELF PRICE
+    #   differed from that chain's previous known price (the visible
+    #   "שינוי אחרון במחירים המוצגים" line), or None.
+    # content_modified: newest of that and a shown promo text change — the
+    #   sitemap <lastmod> / JSON-LD dateModified — or None when no change was
+    #   observed in the loaded history (both are then omitted).
 
     def url(self):
         return f"/prices/p/{self.key}/"
@@ -559,9 +771,10 @@ def today_candidates(data):
     return out
 
 
-def select_products(data, hist, cands):
+def select_products(data, hist, cands, common_promos=frozenset()):
     """Apply the hysteresis selection and the content exclusions.
 
+    common_promos: the store-wide (chain, description) set (storewide_promos).
     Returns ({key: Product}, stats Counter)."""
     chains = data["chains"]
     today = data["date"]
@@ -574,6 +787,8 @@ def select_products(data, hist, cands):
     stats["kept"] = len(kept)
     stats["dropped_below_keep"] = len(in_today - kept)
     stats["entered_missing_today"] = len(entered) - len(in_today)
+    stats["alcohol_no_promo_text"] = 0
+    stats["storewide_promos_hidden"] = 0
 
     products = {}
     for key in sorted(kept):
@@ -593,11 +808,18 @@ def select_products(data, hist, cands):
         pr.cat = entry[7] if len(entry) > 7 and isinstance(entry[7], int) else 0
         pr.prices = list(entry[4])
         pr.shown = [clean.get(c) for c in chains]
-        pr.promos = list(entry[6]) if entry[6] else [None] * len(chains)
-        pr.alcohol = is_alcohol(entry[1], entry[3])
-        pr.history, pr.lastmod, pr.changed = [], today, False
+        raw_promos = list(entry[6]) if entry[6] else [None] * len(chains)
+        pr.promos = filter_promos(raw_promos, chains, common_promos)
+        stats["storewide_promos_hidden"] += sum(
+            1 for a, b in zip(raw_promos, pr.promos) if a and not b)
+        pr.alcohol = is_alcohol(entry[1], entry[3],
+                                [pm[1] for pm in raw_promos if pm and pm[1]])
+        pr.size_conflict = size_conflict(pr.name, pr.unit)
+        pr.history, pr.price_changed, pr.content_modified = [], None, None
         if pr.alcohol:
             stats["alcohol_no_promo_text"] += 1
+        if pr.size_conflict:
+            stats["size_conflict_hidden"] += 1
         stats["outlier_prices_hidden"] += sum(
             1 for p, s in zip(pr.prices, pr.shown) if p is not None and s is None)
         products[key] = pr
@@ -605,9 +827,9 @@ def select_products(data, hist, cands):
     return products, stats
 
 
-def _promo_descs_by_day(products, hist):
-    """{date: {key: {chain: desc}}} as attach_promos would pick them that day
-    (None: no promo snapshot that day)."""
+def _promo_descs_by_day(products, hist, chains_common=frozenset()):
+    """{date: {key: {chain: desc}}} as attach_promos would pick them that day,
+    store-wide offers dropped (None: no promo snapshot that day)."""
     out = {}
     for d in hist["dates"]:
         rows = hist["promos"].get(d)
@@ -617,16 +839,34 @@ def _promo_descs_by_day(products, hist):
         base = {(k, c): p for k, cp in hist["prices"][d].items() if k in products
                 for c, p in cp.items()}
         picked = attach_promos(rows, date=d, base_lookup=base)
-        out[d] = {k: {c: v[1] for c, v in per.items()} for k, per in picked.items()}
+        out[d] = {k: {c: v[1] for c, v in per.items()
+                      if not promo_is_storewide(c, v[1], chains_common)}
+                  for k, per in picked.items()}
     return out
 
 
-def attach_history(products, chains, hist, today):
-    """Per product: the 30-day range table and lastmod. Returns the hub's
-    list of (key, [(chain, old, new)]) shelf-price changes since the previous
+def last_change(series):
+    """series: [(date, {chain: value})] ascending; a chain missing from a
+    day's dict was absent from that day's file. Returns the newest date on
+    which some chain's value differs from that chain's last known value, or
+    None. The last value is carried across days a chain is absent, so a chain
+    dropping out of a partial file and coming back is not a change."""
+    last, newest = {}, None
+    for d, vals in series:
+        for c, v in vals.items():
+            if c in last and last[c] != v:
+                newest = d
+            last[c] = v
+    return newest
+
+
+def attach_history(products, chains, hist, today, common_promos=frozenset()):
+    """Per product: the 30-day range table, the last shelf-price change and
+    the last content change. Returns the hub's list of
+    (key, [(chain, old, new)]) shelf-price changes since the previous
     snapshot, sorted by name, and that previous snapshot's date."""
     dates = [d for d in hist["dates"] if d <= today]
-    promo_days = _promo_descs_by_day(products, hist)
+    promo_days = _promo_descs_by_day(products, hist, common_promos)
     window_start = _hist_start(today)
     window = [d for d in dates if d >= window_start]
     prev_day = max((d for d in dates if d < today), default=None)
@@ -635,38 +875,42 @@ def attach_history(products, chains, hist, today):
     for key, pr in products.items():
         shown_chains = [c for c, s in zip(chains, pr.shown) if s is not None]
 
-        # 30-day per-chain ranges from raw rows, clean values only
-        acc = defaultdict(list)
+        # 30 days per chain: the days the chain priced the product in its raw
+        # file, and the range of the values that passed the outlier filter
+        # (None when every one of them was filtered)
+        present, acc = Counter(), defaultdict(list)
         for d in window:
             day = hist["prices"][d].get(key)
             if day:
+                present.update(day.keys())
                 for c, p in clean_prices(day).items():
                     acc[c].append(p)
-        order = order_base + sorted(c for c in acc if c not in order_base)
-        pr.history = [(c, min(acc[c]), max(acc[c]), len(acc[c])) for c in order if acc.get(c)]
+        order = order_base + sorted(c for c in present if c not in order_base)
+        pr.history = [(c, min(acc[c]) if acc[c] else None,
+                       max(acc[c]) if acc[c] else None, present[c])
+                      for c in order if present.get(c)]
 
-        # lastmod: newest snapshot on which a shown chain's shelf price or
-        # promo description differs from the previous snapshot
-        def state(d):
+        # the visible "last change" line: shelf prices of the shown chains only
+        price_series = []
+        for d in dates:
             day = hist["prices"][d].get(key, {})
-            promos = None if pr.alcohol else promo_days.get(d)
-            per = promos.get(key, {}) if promos is not None else None
-            return [(day.get(c), per.get(c) if per is not None else None, per is not None)
-                    for c in shown_chains]
+            price_series.append((d, {c: day[c] for c in shown_chains if c in day}))
+        pr.price_changed = last_change(price_series)
 
-        pr.lastmod, pr.changed = None, False
-        cur = state(dates[-1]) if dates else None
-        for i in range(len(dates) - 1, 0, -1):
-            prev = state(dates[i - 1])
-            if any(a[0] != b[0] or (a[2] and b[2] and a[1] != b[1])
-                   for a, b in zip(cur, prev)):
-                pr.lastmod, pr.changed = dates[i], True
-                break
-            cur = prev
-        if pr.lastmod is None:
-            # unchanged across all loaded history: the content dates from the
-            # oldest snapshot that vouches for it (today when there is none)
-            pr.lastmod = dates[0] if dates else today
+        # sitemap lastmod / dateModified: shelf prices or the promo text shown
+        promo_changed = None
+        if not pr.alcohol:
+            promo_series = []
+            for d in dates:
+                per_day = promo_days.get(d)
+                if per_day is None:
+                    continue                      # no promo snapshot that day
+                per = per_day.get(key, {})
+                day = hist["prices"][d].get(key, {})
+                promo_series.append((d, {c: per.get(c) or "" for c in shown_chains if c in day}))
+            promo_changed = last_change(promo_series)
+        pr.content_modified = max((d for d in (pr.price_changed, promo_changed) if d),
+                                  default=None)
 
     changes = []
     if prev_day:
@@ -825,8 +1069,10 @@ def _crumb_ld(items):
 
 def _webpage_ld(page_type, url, name, date_mod, lang="he-IL", extra=None):
     node = {"@type": page_type, "@id": BASE + url, "url": BASE + url, "name": name,
-            "inLanguage": lang, "dateModified": date_mod,
-            "isPartOf": {"@id": SITE_ID}, "publisher": {"@id": ORG_ID}}
+            "inLanguage": lang}
+    if date_mod:                          # omitted when unknown (no change seen)
+        node["dateModified"] = date_mod
+    node.update({"isPartOf": {"@id": SITE_ID}, "publisher": {"@id": ORG_ID}})
     if extra:
         node.update(extra)
     return node
@@ -840,6 +1086,37 @@ def _store_label(chain, long=False):
 
 
 # --- product page ----------------------------------------------------------------
+TITLE_MAX = 72
+_TRAIL_PUNCT = " ,·-–—"
+
+
+def _ends_with_digit(text):
+    return bool(text) and text.rstrip(_TRAIL_PUNCT)[-1:].isdigit()
+
+
+def product_title(title_name, today):
+    """<title> of at most TITLE_MAX chars. Shortened on word boundaries, and
+    never ending on a bare number: "שוופס 1.5…" would cut a size off its unit
+    and read as a range with the date that follows, so the number goes too."""
+    suffix = f" — {date_he_short(today)} | סלים"
+    limit = TITLE_MAX - len(suffix)
+    core = f"מחיר {title_name} בחנויות הרשתות"
+    if len(core) <= limit:
+        return core + suffix
+    core = f"מחיר {title_name}"
+    if len(core) <= limit and not _ends_with_digit(core):
+        return core + suffix
+    words, cut = core.split(), False
+    while len(words) > 2 and len(" ".join(words)) > limit - 1:
+        words.pop()
+        cut = True
+    while len(words) > 2 and _ends_with_digit(words[-1]):
+        words.pop()
+        cut = True
+    core = " ".join(words).rstrip(_TRAIL_PUNCT)
+    return core + ("…" if cut else "") + suffix
+
+
 def render_product(pr, chains, data, products_by_cat, noindex):
     today = data["date"]
     cat_name = CATEGORIES[pr.cat] if 0 <= pr.cat < len(CATEGORIES) else ""
@@ -847,14 +1124,7 @@ def render_product(pr, chains, data, products_by_cat, noindex):
     cat_url = f"/prices/category/{cat_slug}/" if cat_slug else None
     shown = [(c, s) for c, s in zip(chains, pr.shown) if s is not None]
 
-    # <title>
-    suffix = f" — {date_he_short(today)} | סלים"
-    core = f"מחיר {pr.title_name} בחנויות הרשתות"
-    if len(core) + len(suffix) > 72:
-        core = f"מחיר {pr.title_name}"
-    if len(core) + len(suffix) > 72:
-        core = _trim_words(core, 72 - len(suffix))
-    title = core + suffix
+    title = product_title(pr.title_name, today)
 
     # meta description: dated, fixed chain order, as many chains as fit
     head = f"מחירי המדף של {pr.title_name} לפי קבצי המחירים מ־{date_he_short(today)}: "
@@ -876,19 +1146,20 @@ def render_product(pr, chains, data, products_by_cat, noindex):
         "המחיר המחייב הוא המחיר אצל הרשת.",
         "מחירי מדף לפני מבצעי מועדון וקופון."))
 
-    # lede
+    # lede (no size line when the name states a different size: the page
+    # would contradict itself, and per-unit prices would use the wrong one)
     facts = []
-    if pr.unit and not is_single_unit(pr.unit):
-        facts.append(f"גודל: {esc(pr.unit)}")
+    if display_size(pr):
+        facts.append(f"גודל: {esc(display_size(pr))}")
     if pr.brand:
-        facts.append(f"יצרן / מותג: {esc(pr.brand)}")
+        facts.append(f"יצרן / יבואן: {esc(pr.brand)}")
     facts.append(f"מק״ט / ברקוד: {num(pr.key)}")
     if cat_url:
         facts.append(f'קטגוריה: <a href="{cat_url}">{esc(cat_name)}</a>')
 
     # price table
     show_promo = not pr.alcohol
-    show_measure = any(per_measure(s, pr.unit) for _c, s in shown)
+    show_measure = not pr.size_conflict and any(per_measure(s, pr.unit) for _c, s in shown)
     rows = []
     for i, c in enumerate(chains):
         label = _store_label(c)
@@ -931,12 +1202,15 @@ def render_product(pr, chains, data, products_by_cat, noindex):
     # 30-day history
     if pr.history:
         hist_rows = "".join(
-            f'<tr><th scope="row">{esc(c)}</th><td>{price_range(lo, hi)}</td>'
+            f'<tr><th scope="row">{esc(c)}</th>'
+            f"<td>{price_range(lo, hi) if lo is not None else '—'}</td>"
             f"<td>{n}</td></tr>" for c, lo, hi, n in pr.history)
         hist_html = (
             '<h2 id="history">טווח מחירי המדף ב־30 הימים האחרונים</h2>'
             "<p>המחיר הנמוך והגבוה שנרשמו בקובצי המחירים היומיים של כל רשת, ובכמה ימים "
-            "המוצר הופיע בקובץ.</p>"
+            "המוצר הופיע בקובץ. מחיר שרחוק מאוד משאר הרשתות באותו יום לא נכלל בטווח"
+            + ("; קו מפריד מסמן רשת שכל המחירים שלה בתקופה היו כאלה"
+               if any(lo is None for _c, lo, _h, _n in pr.history) else "") + ".</p>"
             '<div class="art-table-wrap"><table>'
             f"<caption>טווח מחירי המדף לפי רשת, {time_tag(_hist_start(today), date_he(_hist_start(today)))}"
             f" עד {time_tag(today, date_he(today))}</caption>"
@@ -947,7 +1221,9 @@ def render_product(pr, chains, data, products_by_cat, noindex):
         hist_html = ""
 
     # related
-    related = _related(pr, products_by_cat.get(pr.cat, []))
+    # uncategorised products share nothing but the lack of a category, so
+    # neighbours by name order there would be unrelated links
+    related = _related(pr, products_by_cat.get(pr.cat, [])) if cat_url else []
     rel_html = ""
     if related:
         rel_title = f"מוצרים נוספים בקטגוריה {esc(cat_name)}" if cat_url else "מוצרים נוספים"
@@ -955,9 +1231,10 @@ def render_product(pr, chains, data, products_by_cat, noindex):
             f'<li><a href="{r.url()}">{esc(r.title_name)}</a></li>' for r in related) + "</ul>")
 
     updated = (f'<p class="art-meta">נתוני המחירים: {time_tag(today, date_he(today))}')
-    if pr.changed and pr.lastmod != today:
-        updated += f" · שינוי אחרון במחירים המוצגים: {time_tag(pr.lastmod, date_he(pr.lastmod))}"
-    elif pr.changed:
+    if pr.price_changed and pr.price_changed != today:
+        updated += (" · שינוי אחרון במחירים המוצגים: "
+                    f"{time_tag(pr.price_changed, date_he(pr.price_changed))}")
+    elif pr.price_changed:
         updated += " · המחירים המוצגים השתנו בעדכון הזה"
     updated += "</p>"
 
@@ -981,7 +1258,9 @@ def render_product(pr, chains, data, products_by_cat, noindex):
     if g:
         product_ld["gtin13"] = g
     if pr.brand:
-        product_ld["brand"] = {"@type": "Brand", "name": pr.brand}
+        # the files' ManufacturerName is the manufacturer or importer (Tuborg
+        # lists "קוקה קולה"), not the brand
+        product_ld["manufacturer"] = {"@type": "Organization", "name": pr.brand}
     if cat_name and cat_url:
         product_ld["category"] = cat_name
     vals = [s for _, s in shown]
@@ -989,7 +1268,7 @@ def render_product(pr, chains, data, products_by_cat, noindex):
                             "lowPrice": round(min(vals), 2), "highPrice": round(max(vals), 2),
                             "offerCount": len(vals)}
     ld = [_crumb_ld([(n, u) for n, u in crumbs[:-1]] + [(pr.name, None)]),
-          _webpage_ld("WebPage", pr.url(), title, pr.lastmod),
+          _webpage_ld("WebPage", pr.url(), title, pr.content_modified),
           product_ld]
     return page_shell(lang="he", url=pr.url(), title=title, description=description,
                       og_type="website", json_ld=ld, crumbs=crumbs, body=body,
@@ -1031,9 +1310,10 @@ def render_category(idx, items, chains, data, noindex):
     rows = []
     for pr in items:
         vals = [s for s in pr.shown if s is not None]
+        in_file = sum(1 for p in pr.prices if p is not None)
         rows.append(
             f'<tr><th scope="row"><a href="{pr.url()}">{esc(pr.name)}</a></th>'
-            f"<td>{esc(pr.unit) or '—'}</td><td>{len(vals)}</td>"
+            f"<td>{esc(display_size(pr)) or '—'}</td><td>{in_file}</td>"
             f"<td>{price_range(min(vals), max(vals))}</td></tr>")
     body = (
         f"<h1>מחירי {esc(name)} ברשתות — {esc(date_he(today))}</h1>"
@@ -1047,8 +1327,9 @@ def render_category(idx, items, chains, data, noindex):
         '<thead><tr><th scope="col">מוצר</th><th scope="col">גודל</th>'
         '<th scope="col">רשתות עם מחיר</th><th scope="col">טווח מחירי מדף</th></tr></thead>'
         f'<tbody>{"".join(rows)}</tbody></table></div>'
-        '<p class="pr-fine">הטבלה ממוינת לפי שם המוצר. הטווח כולל את מחירי המדף של '
-        "הרשתות שבקובץ היום; מחיר שרחוק מאוד משאר הרשתות לא נכלל.</p>")
+        '<p class="pr-fine">הטבלה ממוינת לפי שם המוצר. "רשתות עם מחיר" סופר את הרשתות '
+        "שהמוצר מופיע בקובץ שלהן היום. הטווח כולל את מחירי המדף של הרשתות האלה; מחיר "
+        "שרחוק מאוד משאר הרשתות לא נכלל.</p>")
     crumbs = [("סלים", "/"), ("מחירים", "/prices/"), (name, None)]
     ld = [
         _webpage_ld("CollectionPage", url, title, today),
@@ -1064,7 +1345,28 @@ def render_category(idx, items, chains, data, noindex):
 
 
 # --- hub ---------------------------------------------------------------------------
-def hub_facts(data):
+_HE_NUM_M = {1: "אחד", 2: "שני", 3: "שלושה", 4: "ארבעה", 5: "חמישה", 6: "שישה",
+             7: "שבעה", 8: "שמונה", 9: "תשעה", 10: "עשרה"}
+_HE_NUM_F = {1: "אחת", 2: "שתי", 3: "שלוש", 4: "ארבע", 5: "חמש", 6: "שש",
+             7: "שבע", 8: "שמונה", 9: "תשע", 10: "עשר"}
+
+
+def he_count(n, feminine):
+    """A count before a plural noun: 3 ימים -> "שלושה", 2 רשתות -> "שתי"."""
+    return (_HE_NUM_F if feminine else _HE_NUM_M).get(n) or str(n)
+
+
+def selection_rule_he():
+    """The hub's page-selection sentence, built from the thresholds."""
+    return (f"עמוד מחיר נפתח למוצר שהופיע בקובצים של {he_count(MIN_ENTER_CHAINS, True)} "
+            f"רשתות לפחות, ב{he_count(ENTER_MIN_DAYS, False)} ימים לפחות מתוך "
+            f"{ENTER_WINDOW_DAYS} הימים האחרונים, ונשאר פתוח כל עוד יש לו מחיר "
+            f"ב{he_count(KEEP_MIN_CHAINS, True)} רשתות לפחות.")
+
+
+def hub_facts(data, common_promos=frozenset()):
+    """Counts for the hub. A product counts as "with a promo" only for an
+    offer on the product itself — store-wide offers are not counted."""
     chains = data["chains"]
     per_chain = [0] * len(chains)
     by_n = Counter()
@@ -1076,7 +1378,7 @@ def hub_facts(data):
                 per_chain[i] += 1
                 n += 1
         by_n[min(n, 3)] += 1
-        if entry[6] and any(entry[6]):
+        if entry[6] and any(filter_promos(entry[6], chains, common_promos)):
             with_promo += 1
     return {"total": len(data["products"]), "with_promo": with_promo,
             "by_n": by_n, "per_chain": per_chain}
@@ -1096,10 +1398,11 @@ def partial_chains(hist, chains, today):
     return out
 
 
-def render_hub(products, by_cat, chains, data, hist, changes, prev_day, noindex):
+def render_hub(products, by_cat, chains, data, hist, changes, prev_day, noindex,
+               common_promos=frozenset()):
     today = data["date"]
     url = "/prices/"
-    facts = hub_facts(data)
+    facts = hub_facts(data, common_promos)
     title = f"מחירי סופרמרקט ברשתות — עדכון {date_he_short(today)} | סלים"
     description = fit_description(
         f"מחירי המדף ב־{len(chains)} רשתות לפי קובצי שקיפות המחירים מ־{date_he_short(today)}: "
@@ -1130,7 +1433,8 @@ def render_hub(products, by_cat, chains, data, hist, changes, prev_day, noindex)
         "<ul>"
         f"<li>{num(fmt_int(facts['total']))} מוצרים בקובצי המחירים של היום, אחרי איחוד של "
         "אותו מוצר בין הרשתות.</li>"
-        f"<li>ל־{num(fmt_int(facts['with_promo']))} מהם יש לפחות מבצע אחד בתוקף בקובצי המבצעים.</li>"
+        f"<li>ל־{num(fmt_int(facts['with_promo']))} מהם יש לפחות מבצע אחד בתוקף בקובצי המבצעים "
+        "(לא כולל הטבות שחלות על כל החנות, כמו מתנה בקנייה מעל רף מסוים).</li>"
         f"<li>{num(fmt_int(by_n[1]))} מוצרים מתומחרים ברשת אחת בלבד, {num(fmt_int(by_n[2]))} "
         f"בשתי רשתות ו־{num(fmt_int(by_n[3]))} בשלוש רשתות או יותר.</li>"
         f"<li>{num(fmt_int(len(products)))} מוצרים, שנמכרים ברוב הרשתות, מקבלים כאן עמוד מחיר "
@@ -1194,8 +1498,7 @@ def render_hub(products, by_cat, chains, data, hist, changes, prev_day, noindex)
         f'<h2 id="categories">מחירים לפי קטגוריה</h2><ul>{cat_items}</ul>'
         f"{changes_html}"
         '<h2 id="method">איך לקרוא את המחירים</h2>'
-        "<p>עמוד מחיר נפתח למוצר שהופיע לפחות בשלושה ימים בקובצים של רוב הרשתות, ונשאר "
-        "פתוח כל עוד יש לו מחיר בשתי רשתות לפחות. מחיר שרחוק מאוד מהמחירים של אותו מוצר "
+        f"<p>{selection_rule_he()} מחיר שרחוק מאוד מהמחירים של אותו מוצר "
         "ברשתות האחרות לא מוצג, כי לרוב מדובר בטעות בקובץ או ביחידת מידה אחרת. "
         '<a href="/about/">המתודולוגיה המלאה</a>.</p>'
         '<div class="art-cta"><p>מחיר של מוצר אחד הוא רק חלק מהתמונה: הסל כולו, המבצעים '
@@ -1310,7 +1613,8 @@ def render_sitemap(entries, noindex):
              '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">']
     if not noindex:
         for url, lastmod in entries:
-            lines.append(f"<url><loc>{html.escape(BASE + url)}</loc><lastmod>{lastmod}</lastmod></url>")
+            mod = f"<lastmod>{lastmod}</lastmod>" if lastmod else ""
+            lines.append(f"<url><loc>{html.escape(BASE + url)}</loc>{mod}</url>")
     lines.append("</urlset>")
     return "\n".join(lines) + "\n"
 
@@ -1326,12 +1630,18 @@ def _write(site_dir, url, content):
     return len(data)
 
 
+class GenerationError(ValueError):
+    """The inputs cannot produce a page set; nothing has been written."""
+
+
 class Model:
     """Everything the writers need: computed once, rendered any number of times."""
 
-    def __init__(self, data, products, stats, hist, changes, prev_day):
+    def __init__(self, data, products, stats, hist, changes, prev_day,
+                 common_promos=frozenset()):
         self.data, self.products, self.stats = data, products, stats
         self.hist, self.changes, self.prev_day = hist, changes, prev_day
+        self.common_promos = common_promos
         self.chains, self.date = data["chains"], data["date"]
         self.by_cat = defaultdict(list)
         for pr in products.values():
@@ -1349,25 +1659,37 @@ def prepare(data_dir="data", products_path=os.path.join("site", "data", "product
     cands = today_candidates(data)
     keepable = {k for k, (_e, clean) in cands.items() if len(clean) >= KEEP_MIN_CHAINS}
     hist = load_price_history(data_dir, today, keepable)
-    products, stats = select_products(data, hist, cands)
+    if not hist["dates"]:
+        raise GenerationError(f"no price snapshots under {data_dir!r} within "
+                              f"{ENTER_WINDOW_DAYS} days of {today}")
+    common = storewide_promos(data)
+    products, stats = select_products(data, hist, cands, common)
+    if not products:
+        raise GenerationError(f"no product qualifies for a page ({len(hist['dates'])} "
+                              f"snapshot days under {data_dir!r})")
     hist["promos"] = load_promo_history(data_dir, hist["dates"], set(products))
-    changes, prev_day = attach_history(products, data["chains"], hist, today)
+    changes, prev_day = attach_history(products, data["chains"], hist, today, common)
     stats["snapshot_days"] = len(hist["dates"])
     stats["changed_since_previous"] = len(changes)
-    return Model(data, products, stats, hist, changes, prev_day)
+    stats["storewide_promo_descriptions"] = len(common)
+    stats["no_observed_change"] = sum(1 for pr in products.values() if not pr.content_modified)
+    return Model(data, products, stats, hist, changes, prev_day, common)
 
 
 def write_pages(model, site_dir="site", noindex=None):
     """Render and write every page plus the sitemap. Returns a stats dict."""
     noindex = STATIC_PAGES_NOINDEX if noindex is None else noindex
     m, today, chains = model, model.date, model.chains
+    if not m.products:                    # never wipe the live pages for nothing
+        raise GenerationError("no product pages to write")
 
     # fresh output: a product that left the selection must lose its page
     shutil.rmtree(os.path.join(site_dir, "prices"), ignore_errors=True)
     total_bytes = 0
     sitemap = [("/prices/", today)]
     total_bytes += _write(site_dir, "/prices/", render_hub(
-        m.products, m.by_cat, chains, m.data, m.hist, m.changes, m.prev_day, noindex))
+        m.products, m.by_cat, chains, m.data, m.hist, m.changes, m.prev_day, noindex,
+        m.common_promos))
     n_cat = 0
     for idx in sorted(CATEGORY_SLUGS):
         if not m.by_cat.get(idx):
@@ -1383,7 +1705,7 @@ def write_pages(model, site_dir="site", noindex=None):
         pr = m.products[key]
         total_bytes += _write(site_dir, pr.url(),
                               render_product(pr, chains, m.data, m.by_cat, noindex))
-        sitemap.append((pr.url(), pr.lastmod))
+        sitemap.append((pr.url(), pr.content_modified))
     total_bytes += _write(site_dir, "/sitemap-prices.xml", render_sitemap(sitemap, noindex))
 
     stats = dict(m.stats)
