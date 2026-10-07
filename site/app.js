@@ -571,7 +571,7 @@ async function cloudPull(uid) {
       }
       state.auth.pulled = true;
       restoreAll();
-      if (state.byKey.size) { restoreList(); backfillSnapshots(); }
+      if (state.byKey.size) { restoreList(); backfillSnapshots(); reapplyLinkAdds(); }
     } else {
       state.auth.pulled = true;
       cloudPush();                       // first login on this account: seed from device
@@ -717,6 +717,7 @@ async function loadData() {
 
     restoreList();
     backfillSnapshots();
+    reapplyLinkAdds();
     state.status = 'live';
   } catch (err) {
     console.error('data load failed:', err);
@@ -2466,7 +2467,20 @@ function route() {
   if (screen !== 'basket') state.subs = {};
   render();
   if (screen === 'results') recordComparison();
-  window.scrollTo(0, 0);
+  // after a "#/add" link the confirmation (and the list) sit far below the
+  // search and the popular grid — bring the note into view and focus it so a
+  // screen reader announces it; every other navigation starts at the top
+  const note = state.revealNote && screen === 'build' && document.querySelector('.note-banner');
+  state.revealNote = false;
+  if (note) { note.scrollIntoView({ block: 'center' }); note.focus({ preventScroll: true }); }
+  else window.scrollTo(0, 0);
+}
+function reapplyLinkAdds() {
+  const p = pendingLinkAdds;
+  if (!p || !state.byKey.size || !state.auth.pulled) return;
+  pendingLinkAdds = null;
+  for (const [k, q] of p) if (state.byKey.has(k)) state.list.set(k, Math.max(state.list.get(k) || 0, q));
+  persistList();
 }
 /* "#/add/7290004131074,7290000066318*2" — the pre-filled list link the static
    price pages, /en/ and llms.txt hand out (an answer engine can give a shopper a
@@ -2474,8 +2488,10 @@ function route() {
    printed on the price pages, leading zeros optional, "*N" = quantity. Adds what
    resolves (a link clicked twice does not double the quantities), then shows the
    list; location.replace so Back does not re-run it. */
+let pendingLinkAdds = null;   // a link's items, re-applied if the cloud copy lands after them
 function addFromLink(param) {
   let added = 0, missing = 0;
+  const got = [];
   for (const part of String(param || '').split(',').slice(0, 60)) {
     const m = /^\s*([^*]+?)\s*(?:\*\s*(\d+))?\s*$/.exec(part);
     const code = m ? m[1].trim() : '';
@@ -2484,10 +2500,16 @@ function addFromLink(param) {
     if (!pr) { missing++; continue; }
     const qty = clampQty(m[2] || 1);
     state.list.set(pr.k, Math.max(state.list.get(pr.k) || 0, qty));
+    got.push([pr.k, qty]);
     added++;
   }
   if (added) persistList();
-  state.visited = true; persistPrefs();
+  // signed in, but the account's copy not read yet: the pull would replace
+  // the list with the cloud's and drop these — keep them for reapplyLinkAdds
+  if (got.length && state.auth.mode === 'firebase' && !state.auth.pulled) pendingLinkAdds = got;
+  // a link visitor never gets the sample basket mixed in, now or later
+  state.visited = state.seeded = true; persistPrefs();
+  state.revealNote = true;            // route() scrolls the confirmation into view
   state.note = (added ? `${added === 1 ? 'מוצר אחד נוסף' : added + ' מוצרים נוספו'} לרשימה מהקישור` : 'לא נוספו מוצרים מהקישור') +
     (missing ? ` · ${missing === 1 ? 'מוצר אחד לא נמצא' : missing + ' מוצרים לא נמצאו'} בקטלוג של היום` : '') + '.';
   location.replace('#/build');
@@ -2593,7 +2615,7 @@ function footH() {
 }
 function noteH() {
   if (!state.note) return '';
-  return `<div class="note-banner"><span class="note-check">✓</span><span class="note-text">${esc(state.note)}</span>
+  return `<div class="note-banner" role="status" tabindex="-1"><span class="note-check">✓</span><span class="note-text">${esc(state.note)}</span>
     <button class="note-x" data-action="dismiss-note" aria-label="סגירה">×</button></div>`;
 }
 /* list items today's catalogue lacks (restoreList keeps them aside, never drops them) */

@@ -2,7 +2,7 @@
    (addFromLink) against a tiny catalogue; prints JSON for tests/test_add_link.py. */
 'use strict';
 const loadApp = require('./load_app');
-const { state, addFromLink } = loadApp(['state', 'addFromLink']);
+const { state, addFromLink, reapplyLinkAdds } = loadApp(['state', 'addFromLink', 'reapplyLinkAdds']);
 
 const prod = (k, n, al) => ({ k, n, u: '', b: '', p: [5, 6], al: al || null, pm: null, c: 0,
   codes: [k], nLow: n.toLowerCase(), bLow: '' });
@@ -28,4 +28,18 @@ const out = {
 state.list = new Map([['7290004131074', 5]]); state.orphans = [];
 addFromLink('7290004131074*2');
 out.noDouble = [...state.list];
+out.seeded = state.seeded;
+out.revealNote = state.revealNote;
+
+// signed in, cloud copy not read yet: the pull replaces the list, the link's
+// items are re-applied on top of it
+state.auth = { mode: 'firebase', user: { uid: 'u1' }, ready: true, pulled: false };
+state.list = new Map(); state.orphans = [];
+addFromLink('7290000066318*2');
+state.list = new Map([['7290004131074', 1]]);   // what the cloud pull restored
+state.auth.pulled = true;
+reapplyLinkAdds();
+out.afterPull = [...state.list];
+reapplyLinkAdds();                              // idempotent: nothing pending any more
+out.afterPullAgain = [...state.list];
 process.stdout.write(JSON.stringify(out), () => process.exit(0));

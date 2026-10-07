@@ -54,6 +54,12 @@ jobs:
       # Static, dated price pages for readers that do not run JavaScript (most
       # AI crawlers): /prices/ hub, category and product pages, /en/ and
       # sitemap-prices.xml — gitignored build output, like site/data/.
+      # FAIL-CLOSED ON PURPOSE: if the newest snapshot cannot support pages
+      # (e.g. a day where only one chain's file was collected) this step exits
+      # 1 and nothing deploys — the previous deploy stays live with consistent
+      # dates. A fresh checkout has no previous /prices/ to keep, so deploying
+      # without them would 404 every indexed price URL. Top up locally (or wait
+      # for the next snapshot) to recover.
       - name: Build static price pages
         run: python build_static_pages.py
 
@@ -112,11 +118,23 @@ jobs:
         uses: actions/deploy-pages@v4
 
       # Tell IndexNow engines (Bing → Copilot and ChatGPT search; Yandex, Naver,
-      # Seznam, Yep) which pages changed since yesterday. Google reads the
-      # sitemaps instead. Informational: a failed ping must not fail the deploy.
+      # Seznam, Yep) which pages changed. Google reads the sitemaps instead.
+      # Each change is sent ONCE: after a new snapshot, that day's changed pages
+      # (only when the snapshot is today's — a re-run on an old one sends
+      # nothing); after a code push, only hand-edited pages dated today in
+      # sitemap.xml — never the price pages again. Informational: a failed ping
+      # must not fail the deploy.
       - name: Ping IndexNow with the changed URLs
         continue-on-error: true
-        run: python indexnow_ping.py --since "$(date -u -d '1 day ago' +%F)"
+        run: |
+          SNAP=$(python -c "import gzip,json;print(json.load(gzip.open('site/data/products.json.gz','rt'))['date'])")
+          TODAY=$(date -u +%F)
+          if [ "${{ github.event_name }}" = "workflow_run" ]; then
+            if [ "$SNAP" = "$TODAY" ]; then python indexnow_ping.py --since "$SNAP"
+            else echo "snapshot $SNAP is not today's — nothing new to send"; fi
+          else
+            python indexnow_ping.py --since "$TODAY" --sitemap sitemap.xml
+          fi
 
       # The live site as an AI crawler sees it: no JavaScript, an AI user agent.
       # Pages caches up to 10 minutes, so only the structure is asserted here.

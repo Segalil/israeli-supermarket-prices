@@ -500,5 +500,9 @@ def test_indexnow_key_file_and_changed_urls(tmp_path):
         encoding="utf-8")
     assert indexnow_ping.changed_urls(str(tmp_path), "2027-01-05") == \
         ["https://slim-super.com/prices/", "https://slim-super.com/"]
+    # a code push sends only the hand-maintained sitemap, never the price pages
+    assert indexnow_ping.changed_urls(str(tmp_path), "2027-01-05", "sitemap.xml") == \
+        ["https://slim-super.com/"]
     workflow = read(os.path.join(ROOT, ".github", "workflows", "deploy-pages.yml"))
     assert "indexnow_ping.py" in workflow and "build_static_pages.py" in workflow
+    assert "--sitemap sitemap.xml" in workflow, "push deploys must not re-send the price pages"

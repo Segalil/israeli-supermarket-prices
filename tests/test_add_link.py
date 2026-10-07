@@ -41,3 +41,13 @@ def test_unknown_codes_are_reported_not_fatal(out):
 def test_quantity_is_clamped_and_a_repeat_click_does_not_double(out):
     assert out["clampQty"]["list"] == [["7290004131074", 99]]
     assert out["noDouble"] == [["7290004131074", 5]]
+
+
+def test_link_visitor_is_marked_seen_and_the_note_is_revealed(out):
+    assert out["seeded"] is True, "no sample basket later for someone who came via a link"
+    assert out["revealNote"] is True
+
+
+def test_link_items_survive_a_later_cloud_pull(out):
+    assert out["afterPull"] == [["7290004131074", 1], ["7290000066318", 2]]
+    assert out["afterPullAgain"] == out["afterPull"]

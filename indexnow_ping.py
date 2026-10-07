@@ -4,6 +4,7 @@
 
     python indexnow_ping.py --since 2026-10-06            # POST the changed URLs
     python indexnow_ping.py --since 2026-10-06 --dry-run  # just list them
+    python indexnow_ping.py --since 2026-10-07 --sitemap sitemap.xml   # hand-edited pages only
 
 IndexNow reaches Bing (which grounds Copilot and is a search provider behind
 ChatGPT search), Yandex, Naver, Seznam and Yep — not Google, which reads the
@@ -36,10 +37,13 @@ def find_key(site):
     return None
 
 
-def changed_urls(site, since):
-    """URLs from every sitemap under site/ whose <lastmod> >= since, in order."""
+def changed_urls(site, since, only=None):
+    """URLs from every sitemap under site/ (or just the one named `only`) whose
+    <lastmod> >= since, in order. Entries without a <lastmod> (a price page
+    with no observed change) are never sent."""
     out = []
-    for path in sorted(glob.glob(os.path.join(site, "sitemap*.xml"))):
+    pattern = only or "sitemap*.xml"
+    for path in sorted(glob.glob(os.path.join(site, pattern))):
         with open(path, encoding="utf-8") as fh:
             xml = fh.read()
         for loc, mod in re.findall(r"<url>\s*<loc>([^<]+)</loc>\s*<lastmod>([^<]+)</lastmod>", xml):
@@ -52,12 +56,13 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--site", default="site")
     ap.add_argument("--since", required=True, help="YYYY-MM-DD; send URLs modified on/after it")
+    ap.add_argument("--sitemap", help="only this sitemap file (e.g. sitemap.xml)")
     ap.add_argument("--dry-run", action="store_true")
     args = ap.parse_args()
     key = find_key(args.site)
     if not key:
         sys.exit("indexnow: no key file site/<32 hex>.txt")
-    urls = changed_urls(args.site, args.since)[:MAX_URLS]
+    urls = changed_urls(args.site, args.since, args.sitemap)[:MAX_URLS]
     print(f"indexnow: {len(urls)} changed URL(s) since {args.since}")
     if not urls or args.dry_run:
         for u in urls[:20]:

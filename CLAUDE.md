@@ -76,7 +76,12 @@ Downloading is done via the il-supermarket-scraper library (PyPI).
   flavor-suffix cut ("בטעם…" is ignored) and most-generic-last ordering
   (produce runs last); ~67% of products classify, index 0 = "אחר". When tuning
   keywords, keep the order-sensitivity tests in test_category_classification
-  green (שוקולד חלב → snacks, רוטב עגבניות → pantry, etc.).
+  green (שוקולד חלב → snacks, רוטב עגבניות → pantry, etc.). Keywords of <= 3
+  letters match whole words only (_kw_hit — "לק" took "לקטוז" milk, "כוס" took
+  "כוסמין" bread); produce keeps prefix matching on the first word. Flavour /
+  use words (קפה, תה, שוקו, קפסולות) are a WEAK drinks rule after dairy, so
+  "סלמי תה" and "קולגייט … לאוהבי קפה" are not drinks. Categories are public
+  on the static price pages — measure moves over the real catalogue first.
   It also writes site/data/retired.json.gz ({date, keys:{key:[name,unit,cat]}}):
   every key the snapshots of the last 180 days carried that today's dataset
   lacks (retired_names; keys spelled by the shared product_key()). Lists saved
@@ -349,9 +354,22 @@ Downloading is done via the il-supermarket-scraper library (PyPI).
     answer engine can send a shopper straight into a comparison.
   * deploy-pages.yml: build_static_pages.py → stamp_static.py → a pre-upload
     check (stamped facts present, generated pages exist, no GitHub/open-source
-    string in any HTML) → deploy → indexnow_ping.py (URLs whose <lastmod> is
-    since yesterday; key file site/<32 hex>.txt; reaches Bing, which grounds
-    Copilot and ChatGPT search) → a live smoke test with an AI user agent.
+    string in any HTML) → deploy → indexnow_ping.py → a live smoke test with an
+    AI user agent. IndexNow (key file site/<32 hex>.txt; reaches Bing, which
+    grounds Copilot and ChatGPT search) sends each change ONCE: a snapshot
+    deploy sends that day's changed pages only if the snapshot is today's; a
+    code push sends only sitemap.xml pages dated today (--sitemap sitemap.xml).
+    The generator step is FAIL-CLOSED on purpose: a snapshot too thin for
+    pages (e.g. one chain) fails the deploy and the previous one stays live.
+  * Where a chain's prices come from is a fact about the DAY's file:
+    products.json "stores" {chain: store id} + basket.store_type() ("online"
+    only when that day's id is the chain's ONLINE_STORE_IDS entry; Carrefour
+    fell back to branch 464 on two days, אושר עד moves between branches). The
+    home page, llms.txt and the price pages all use it; the price pages also
+    key price history by (chain, store) so a store switch is not a "change".
+  * Store-wide offers ("599שח ומעלה-מתנה", vouchers on thousands of items) are
+    dropped in basket.attach_promos BEFORE its one-promo-per-chain pick
+    (STOREWIDE_PROMO_MIN / _RE) — after the pick they hid products' own deals.
   Owner-only steps (outside the repo): Google Search Console + Bing Webmaster
   Tools (submit both sitemaps, watch Bing's AI Performance report).
 - extension/ — MV3 Chrome extension ("ליםSlim — העברת סל לרשתות"): bridge.js

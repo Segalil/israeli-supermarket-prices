@@ -444,3 +444,33 @@ def test_storewide_offers_never_displace_a_products_own_promo():
     got = attach_promos(rows, date="2026-10-06")
     assert got["7290000000017"]["שופרסל"][1] == "קופון ח\"ע סוכריות"
     assert "7290000000000" not in got                          # only the voucher → nothing
+
+
+def test_flavour_words_do_not_make_a_drink():
+    """"קפה", "תה", "שוקו", "קפסולות" describe a flavour or a use as often as a
+    drink; drinks ran before meat, bakery and dairy and took salami "תה",
+    toothpaste "לאוהבי קפה" and dishwasher capsules (all public on the price
+    pages). They are now a weaker rule after dairy."""
+    from israeli_prices.basket import classify_category
+    MEAT, BAKERY, DAIRY, SNACKS, DRINKS, FROZEN, CLEANING, TOILETRIES = 3, 4, 2, 6, 7, 8, 9, 10
+    cases = {
+        "נקניק סלמי תה פרוס 500 ג": MEAT,
+        "קולגייט אופטיק וויט לאוהבי קפה 75 מ\"ל": TOILETRIES,
+        "פיירי קפסולות למדיח מירקל 38 יח": CLEANING,
+        "פיניש מלח למדיח 2 ק\"ג": CLEANING,
+        "עוגת שוקו שוקוציפס350ג": BAKERY,
+        "גלידל שוקו בננה פקאן 454 גר": FROZEN,
+        "ספלנדיד מריר 70% עם קפה 100 גרם": SNACKS,
+        "אקסלנס קרם 5.3 חום זהוב": TOILETRIES,
+        "מעדן יולו שכבות עם קפה ושוקולד לבן": DAIRY,
+        "קפה נמס 200 גרם עלית": DRINKS,
+        "לנדוור חזק קפה טחון": DRINKS,
+        "תה ירוק נענע": DRINKS,
+        "שוקו בבקבוק 1 ליטר": DRINKS,
+        "קפסולות סטארבקס אספרסו": DRINKS,
+        "ליקר לביא שוקלד מריר 500 מל": DRINKS,
+        "ג'ילט 10 סכיני פיוז'ן": 0,              # not Fuze tea
+    }
+    wrong = {n: (classify_category(n), want) for n, want in cases.items()
+             if classify_category(n) != want}
+    assert not wrong, wrong
