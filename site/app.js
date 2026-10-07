@@ -40,7 +40,7 @@ const LS = {
   list: 'slim-list-v2',
   prefs: 'slim-prefs-v2',        // {active:{label:bool}, priority, address, visited, seeded}
   profile: 'slim-profile-v2',    // {name, email, phone}
-  saved: 'slim-saved-lists-v2',  // [{id, kicker, name, codes:[[k,qty]], created}]
+  saved: 'slim-saved-lists-v2',  // [{id, kicker, name, codes:[[k,qty,name,unit,cat]], created}]
   orders: 'slim-orders-v2',      // [{store, date, count, total}]
   stats: 'slim-stats-v2',        // {comparisons, lastSaving, potential}
   legacy: 'smart-basket-list-v1',
@@ -162,6 +162,9 @@ const state = {
   byKey: new Map(),
   popular: [],
   list: new Map(),            // key -> qty
+  orphans: [],                // stored list items today's catalogue lacks, awaiting a decision
+  relink: null,               // #/relink review: {source, id, name, items, heal}
+  retired: null,              // key -> [name, unit, cat] of keys past catalogues had (lazy)
   active: {},                 // label -> bool
   priority: 'price',
   mode: 'single',             // results mode: single | split
@@ -427,13 +430,17 @@ function attachAddressAutocomplete(input) {
 /* ---------- persistence ---------- */
 function saveLS(key, val) {
   try { localStorage.setItem(key, JSON.stringify(val)); } catch (_) {}
-  if (typeof SYNC_KEYS !== 'undefined' && SYNC_KEYS.includes(key)) scheduleCloudPush();
+  if (typeof SYNC_KEYS !== 'undefined' && SYNC_KEYS.includes(key)) {
+    markSyncDirty();
+    scheduleCloudPush();
+  }
 }
 function loadLS(key, fallback) {
   try { const v = JSON.parse(localStorage.getItem(key)); return v ?? fallback; }
   catch (_) { return fallback; }
 }
-function persistList() { saveLS(LS.list, [...state.list]); }
+/* items carry a name snapshot, and unresolved orphans ride along — see restoreList */
+function persistList() { saveLS(LS.list, [...snapList(state.list), ...state.orphans]); }
 function persistPrefs() {
   saveLS(LS.prefs, { active: state.active, priority: state.priority, address: state.address,
     addressCity: state.addressCity, visited: state.visited, seeded: state.seeded });
@@ -488,6 +495,7 @@ async function initAuth() {
     firebase.auth().onAuthStateChanged(async u => {
       state.auth.user = u ? { uid: u.uid, email: u.email || '',
         name: u.displayName || '' } : null;
+      state.auth.pulled = false;           // no pushes until this account's copy is read
       state.auth.ready = true;
       if (u && state.screen === 'setup') { state.visited = true; persistPrefs(); nav('#/build'); }
       if (u) {
@@ -514,9 +522,27 @@ function scheduleCloudPush() {
   clearTimeout(cloudTimer);
   cloudTimer = setTimeout(cloudPush, 1500);
 }
+/* This device's view of its account copy: {uid, dirtyAt, pushedAt}. The push is
+   debounced, so an edit followed by a quick reload never reached the cloud — and
+   the login pull used to let the (older) cloud copy win unconditionally, which
+   reverted a list saved seconds before the reload. Now edits are marked dirty,
+   and the next pull keeps them when they are newer than the cloud copy.
+   Both marking and pushing wait for this session's pull (auth.pulled): saves
+   made while the page boots are re-derived state (snapshot backfill, relinked
+   items), and must neither outvote another device's newer edits nor overwrite
+   the cloud before it has been read. A guest's edits carry no uid and never
+   override an account's data. */
+const SYNC_META = 'slim-sync-meta-v1';
+function syncMeta() { const m = loadLS(SYNC_META, {}); return m && typeof m === 'object' ? m : {}; }
+function setSyncMeta(m) { try { localStorage.setItem(SYNC_META, JSON.stringify(m)); } catch (_) {} }
+function markSyncDirty() {
+  const u = state.auth.user;
+  if (!u || !state.auth.pulled) return;
+  setSyncMeta({ ...syncMeta(), uid: u.uid, dirtyAt: Date.now() });
+}
 async function cloudPush() {
   const u = state.auth.user;
-  if (!u) return;
+  if (!u || !state.auth.pulled) return;
   const data = { updatedAt: Date.now() };
   for (const k of SYNC_KEYS) {
     const v = localStorage.getItem(k);
@@ -524,19 +550,30 @@ async function cloudPush() {
   }
   try {
     await firebase.firestore().collection('users').doc(u.uid).set(data);
+    setSyncMeta({ ...syncMeta(), uid: u.uid, pushedAt: data.updatedAt });
   } catch (err) { console.warn('cloud sync failed:', err); }
 }
 async function cloudPull(uid) {
   try {
     const snap = await firebase.firestore().collection('users').doc(uid).get();
-    if (snap.exists) {
+    const m = syncMeta();
+    const unpushedAt = m.uid === uid && (m.dirtyAt || 0) > (m.pushedAt || 0) ? m.dirtyAt : 0;
+    if (snap.exists && unpushedAt > (snap.data().updatedAt || 0)) {
+      state.auth.pulled = true;
+      cloudPush();                       // this device holds the newest edits — keep them
+    } else if (snap.exists) {
       const data = snap.data();
+      // before restoring: saves made while re-deriving state (snapshot backfill,
+      // auto-relinked items) then count as fresh edits and get pushed back
+      setSyncMeta({ uid, dirtyAt: 0, pushedAt: data.updatedAt || 0 });
       for (const k of SYNC_KEYS) {
         if (typeof data[k] === 'string') localStorage.setItem(k, data[k]);
       }
+      state.auth.pulled = true;
       restoreAll();
-      if (state.byKey.size) restoreList();
+      if (state.byKey.size) { restoreList(); backfillSnapshots(); }
     } else {
+      state.auth.pulled = true;
       cloudPush();                       // first login on this account: seed from device
     }
   } catch (err) { console.warn('cloud pull failed:', err); }
@@ -632,21 +669,25 @@ async function authReset() {
 }
 
 /* ---------- data ---------- */
+/* JSON that may arrive gzipped (magic-byte sniffing: Pages serves the .gz as-is) */
+async function fetchJsonGz(url) {
+  const res = await fetch(url, { cache: 'no-cache' });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const buf = await res.arrayBuffer();
+  const bytes = new Uint8Array(buf);
+  let text;
+  if (bytes[0] === 0x1f && bytes[1] === 0x8b) {
+    const stream = new Blob([buf]).stream().pipeThrough(new DecompressionStream('gzip'));
+    text = await new Response(stream).text();
+  } else {
+    text = new TextDecoder().decode(buf);
+  }
+  return JSON.parse(text);
+}
 async function loadData() {
   state.status = 'loading';
   try {
-    const res = await fetch(DATA_URL, { cache: 'no-cache' });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const buf = await res.arrayBuffer();
-    const bytes = new Uint8Array(buf);
-    let text;
-    if (bytes[0] === 0x1f && bytes[1] === 0x8b) {
-      const stream = new Blob([buf]).stream().pipeThrough(new DecompressionStream('gzip'));
-      text = await new Response(stream).text();
-    } else {
-      text = new TextDecoder().decode(buf);
-    }
-    const data = JSON.parse(text);
+    const data = await fetchJsonGz(DATA_URL);
     state.date = data.date || '';
     state.chains = data.chains || [];
     state.categories = data.categories || [];
@@ -665,6 +706,7 @@ async function loadData() {
       for (const alias of pr.al || []) state.byKey.set(alias, pr);   // merged products keep old keys
     }
     rcptIndex = null;                       // receipt-scan index rebuilds on demand
+    state.retired = null; retiredLoad = null;  // its key set is relative to THIS catalogue
     state.popular = buildPopular();
 
     // active chains: saved prefs ∩ data, default all on
@@ -674,6 +716,7 @@ async function loadData() {
     state.active = act;
 
     restoreList();
+    backfillSnapshots();
     state.status = 'live';
   } catch (err) {
     console.error('data load failed:', err);
@@ -683,14 +726,43 @@ async function loadData() {
   render();
 }
 
+/* The current list, resolved against today's catalogue (resolveListEntries):
+   an identical product relisted under a new key swaps in silently; anything
+   needing a decision is kept aside as an ORPHAN — persisted with the list, so a
+   reload never loses it — until the user picks a replacement or drops it. */
+function absorbResolved(items) {
+  let auto = 0;
+  const orphans = [];
+  for (const it of items) {
+    if (it.pr) {
+      state.list.set(it.pr.k, Math.min(99, (state.list.get(it.pr.k) || 0) + it.qty));
+      if (it.how === 'auto') auto++;
+    } else if (!it.e[2] && it.old.n && !String(it.e[0]).startsWith('n:')) {
+      orphans.push([it.e[0], it.qty, it.old.n, it.old.u, it.old.c]);   // keep the name we found
+    } else orphans.push(it.e);
+  }
+  return { auto, orphans };
+}
+const autoNote = n => (n === 1 ? 'מוצר אחד ברשימה עודכן' : `${n} מוצרים ברשימה עודכנו`) +
+  ' לגרסה הנוכחית בקטלוג — אותו מוצר ואותה אריזה, בקוד חדש.';
 function restoreList() {
   let entries = loadLS(LS.list, null);
   if (entries === null) entries = loadLS(LS.legacy, []);   // migrate v1 list
   state.list = new Map();
-  for (const [k, q] of entries || []) {
-    if (state.byKey.has(k)) state.list.set(k, Math.max(1, Math.min(99, q | 0)));
+  const { auto, orphans } = absorbResolved(resolveListEntries(entries));
+  state.orphans = orphans;
+  if (auto) { state.note = autoNote(auto); persistList(); }
+  if (orphans.some(e => needsRetired(oldInfo(e)))) {
+    ensureRetired().then(() => {
+      if (!state.orphans.length) return;
+      const r = absorbResolved(resolveListEntries(state.orphans));
+      state.orphans = r.orphans;
+      if (r.auto) state.note = autoNote(r.auto);
+      persistList();
+      render();
+    });
   }
-  if (!state.list.size && !state.seeded) {                  // first visit: seed a sample basket
+  if (!state.list.size && !state.orphans.length && !state.seeded) {   // first visit: seed a sample basket
     for (const pr of state.popular.slice(0, 6)) state.list.set(pr.k, 1);
     state.seeded = true;
     state.note = 'מילאנו רשימת דוגמה כדי שתראו איך ההשוואה עובדת — אפשר לערוך או לנקות אותה.';
@@ -1476,7 +1548,7 @@ function commitReceipt() {
   if (r.saveAsList) {
     state.saved.unshift({ id: 'own-' + Date.now(), kicker: 'מקבלה 📸',
       name: 'סריקת קבלה · ' + new Date().toLocaleDateString('he-IL'),
-      codes: picked.map(it => [it.pr.k, it.qty]), created: state.date });
+      codes: picked.map(it => itemSnap(it.pr.k, it.qty)), created: state.date });
     saveLS(LS.saved, state.saved);
     savedMsg = ', ונשמרה גם ברשימות השמורות לשימוש חוזר';
   }
@@ -1877,7 +1949,7 @@ function commitRecipe() {
   if (r.saveAsList) {
     state.saved.unshift({ id: 'own-' + Date.now(), kicker: 'ממתכון 🔗',
       name: r.name ? 'מתכון: ' + r.name.slice(0, 40) : 'רשימת מתכון',
-      codes: picked.map(({ pr, qty }) => [pr.k, qty]), created: state.date });
+      codes: picked.map(({ pr, qty }) => itemSnap(pr.k, qty)), created: state.date });
     saveLS(LS.saved, state.saved);
     savedMsg = ', ונשמרה גם ברשימות השמורות';
   }
@@ -2009,9 +2081,373 @@ function recipeH() {
   </div>`;
 }
 
+/* ---------- list resilience: saved products survive catalogue changes ----------
+   A list stores product KEYS, and keys are not forever: a barcode retires when a
+   pack is relisted, a chain-scoped code leaves with the chain's file, and an "n:"
+   merge key dissolves the day one of its chains skips the product. Loading used
+   to filter unknown keys out silently, so an older list came back half empty.
+   Every stored item now carries a snapshot of what it WAS — [key, qty, name,
+   unit, category] (older readers destructure [k, q] and ignore the rest) — and
+   resolveListEntries() finds it again in today's catalogue:
+     ok     the key, or an alias of a merged product (byKey has both)
+     auto   same name signature AND same size: the same product relisted under
+            a new code, or a dissolved merge. "n:" keys spell their signature,
+            so they need no snapshot.
+     review anything weaker — scored name matches the user confirms on #/relink
+            (best guess pre-selected), never a silent swap and never a drop.
+   Lists saved before snapshots existed hold bare keys; their names come from
+   data/retired.json.gz (every key the past snapshots carried that today's
+   catalogue lacks), fetched only when such a list is opened. */
+const RETIRED_URL = 'data/retired.json.gz';
+const RELINK_MIN = 0.45;         // below this a name match is noise, not a candidate
+const RELINK_PRESELECT = 0.8;    // at or above, the best candidate starts selected
+
+function itemSnap(k, qty) {
+  const pr = state.byKey.get(k);
+  return pr ? [k, qty, pr.n, pr.u || '', pr.c || 0] : [k, qty];
+}
+function snapList(map) { return [...map].map(([k, q]) => itemSnap(k, q)); }
+const clampQty = q => Math.max(1, Math.min(99, q | 0));
+
+/* MIRRORS name_signature() in israeli_prices/basket.py (the "n:" merge keys are
+   built from it): lowercase, geresh -> space, strip everything but word chars
+   and %, fold unit words, sort. tests/test_list_relink.py runs both over real
+   catalogue names and fails if they drift. */
+const SIG_UNIT_WORDS = {
+  'גרם': 'g', 'גר': 'g', 'ג': 'g', 'גרמים': 'g',
+  'קג': 'kg', 'קילוגרם': 'kg', 'קילו': 'kg', 'קילוגרמים': 'kg',
+  'מל': 'ml', 'מיליליטר': 'ml',
+  'ל': 'l', 'ליטר': 'l', 'ליטרים': 'l',
+  'יח': 'un', 'יחידה': 'un', 'יחידות': 'un', 'יחי': 'un',
+};
+function nameSig(name) {
+  const cleaned = String(name || '').toLowerCase().replace(/'/g, ' ')
+    .replace(/[^\p{L}\p{N}_%]+/gu, ' ');
+  const toks = cleaned.split(' ').filter(Boolean).map(t => SIG_UNIT_WORDS[t] || t).sort();
+  return toks.length ? toks.join(' ') : null;
+}
+let sigIndex = null, sigIndexFor = null;
+function ensureSigIndex() {
+  if (sigIndex && sigIndexFor === state.products) return sigIndex;
+  sigIndexFor = state.products;
+  sigIndex = new Map();
+  for (const pr of state.products) {
+    const s = nameSig(pr.n);
+    if (!s) continue;
+    const arr = sigIndex.get(s);
+    if (arr) arr.push(pr); else sigIndex.set(s, [pr]);
+  }
+  return sigIndex;
+}
+
+const SIG_UNIT_SHOW = { g: 'גרם', kg: 'ק"ג', ml: 'מ"ל', l: 'ליטר', un: "יח'" };
+function showSize(sig) {
+  if (!sig) return '';
+  if (sig.kind === 'g') return sig.amount >= 1000 ? `${sig.amount / 1000} ק"ג` : `${sig.amount} גרם`;
+  if (sig.kind === 'ml') return sig.amount >= 1000 ? `${sig.amount / 1000} ליטר` : `${sig.amount} מ"ל`;
+  return `${sig.amount} יח'`;
+}
+/* "n:<signature>|<kind><amount>" (older lists: "n:<signature>", no size and
+   unit words not yet folded — folding them here lets those keys match too).
+   The signature is SORTED tokens, so the name is read off a product that has
+   exactly those words today, in its natural order; failing that, the bare
+   tokens (relinkRow reorders them along its best candidate). */
+function mergeKeyInfo(k) {
+  const bar = k.indexOf('|');
+  const raw = bar < 0 ? k.slice(2) : k.slice(2, bar);
+  const sig = raw.split(' ').filter(Boolean).map(t => SIG_UNIT_WORDS[t] || t).sort().join(' ');
+  const rest = bar < 0 ? null : k.slice(bar + 1);
+  let us = null, u = '', sizeUnknown = rest == null;
+  const m = rest && /^(g|ml|unit)([\d.]+)$/.exec(rest);
+  if (m) { us = { kind: m[1], amount: parseFloat(m[2]) }; u = showSize(us); }
+  else if (rest && rest.startsWith('?')) { u = rest.slice(1); us = unitSig(u); }
+  const twin = (ensureSigIndex().get(sig) || [])[0];
+  const n = twin ? twin.n : sig.split(' ').filter(t => t.length > 1 && !SIG_UNIT_SHOW[t]).join(' ');
+  return { k, n, u, c: twin ? twin.c : 0, sig, us, sizeUnknown, sorted: !twin };
+}
+/* tokens of `words` in the order they appear in `name` (unplaced ones last) */
+function orderLike(words, name) {
+  const ref = stripQuotes(name.toLowerCase()).split(/\s+/);
+  const pos = w => { const i = ref.findIndex(r => r === w || r.startsWith(w) || w.startsWith(r)); return i < 0 ? 99 : i; };
+  return words.split(' ').map((w, i) => [pos(w), i, w]).sort((a, b) => a[0] - b[0] || a[1] - b[1])
+    .map(x => x[2]).join(' ');
+}
+/* everything we still know about a stored item whose key today's catalogue lacks */
+function oldInfo(e) {
+  const [k, , n, u, c] = e;
+  if (n) return { k, n: String(n), u: u || '', c: c || 0, us: unitSig(u) };
+  if (String(k).startsWith('n:')) return mergeKeyInfo(String(k));
+  const r = state.retired && state.retired[k];
+  if (r) return { k, n: r[0], u: r[1] || '', c: r[2] || 0, us: unitSig(r[1]) };
+  return { k, n: '', u: '', c: 0, us: null };          // only the code survives
+}
+const needsRetired = old => !old.n && !String(old.k).startsWith('n:');
+
+function sizeMatches(old, pr) {
+  const b = unitSig(pr.u);
+  if (old.us && b) return old.us.kind === b.kind && Math.abs(old.us.amount - b.amount) < 0.01;
+  if (!old.us && !b) return (old.u || '').trim() === (pr.u || '').trim();
+  return false;
+}
+/* the same product under another key: identical name signature and size.
+   An old "n:" key without a size only resolves when one size exists. */
+function sameProduct(old) {
+  const sig = old.sig || nameSig(old.n);
+  if (!sig) return null;
+  const cands = ensureSigIndex().get(sig) || [];
+  const fits = old.sizeUnknown ? cands : cands.filter(pr => sizeMatches(old, pr));
+  if (!fits.length || (old.sizeUnknown && fits.length > 1)) return null;
+  return fits.reduce((a, b) => (avail(b) > avail(a) ? b : a));
+}
+
+function resolveListEntries(entries) {
+  const out = [];
+  for (const e of entries || []) {
+    if (!Array.isArray(e) || e[0] == null) continue;
+    const qty = clampQty(e[1]);
+    const pr = state.byKey.get(e[0]);
+    if (pr) { out.push({ e, qty, pr, how: 'ok' }); continue; }
+    const old = oldInfo(e);
+    const same = sameProduct(old);
+    out.push(same ? { e, qty, pr: same, how: 'auto', old }
+                  : { e, qty, pr: null, how: 'review', old });
+  }
+  return out;
+}
+
+let retiredLoad = null;
+function ensureRetired() {
+  if (!retiredLoad) {
+    retiredLoad = fetchJsonGz(RETIRED_URL)
+      .then(d => { state.retired = (d && d.keys) || {}; return true; })
+      .catch(err => { console.warn('retired names unavailable:', err); state.retired = {}; return false; });
+  }
+  return retiredLoad;
+}
+
+/* Name similarity for the review candidates. The core is SYMMETRIC token
+   coverage weighted by rarity (IDF over catalogue names): the old name's words
+   found in the candidate, and the candidate's words found in the old name. The
+   weighting is the point — measured on real retired products, a plain count let
+   "מברשת שיניים סנסודיין" pre-select a PARO brush, because two generic words
+   outvoted the one that names the product. Exact word 1, a shared ≥3-letter
+   prefix 0.7 (plurals, truncated names). On top: the product type (Hebrew names
+   lead with it), size and category agreement — the category guard is what keeps
+   "שוקולד חלב" from answering for "חלב". Returns {s, cov}; cov alone gates the
+   pre-selection. */
+function tokenHit(tk, words) {
+  let q = 0;
+  for (const w of words) {
+    if (w === tk) return 1;
+    if (Math.min(w.length, tk.length) >= 3 && (w.startsWith(tk) || tk.startsWith(w))) q = 0.7;
+  }
+  return q;
+}
+function tokenWeight(t) {
+  const df = (rcptIndex.words.get(t) || []).length;
+  return Math.log((state.products.length + 1) / (df + 1));
+}
+function weightedCover(from, to) {
+  let got = 0, all = 0;
+  for (const t of from) { const w = tokenWeight(t); all += w; got += w * tokenHit(t, to); }
+  return all ? got / all : 0;
+}
+function relinkScore(old, A, weak, pr) {
+  const B = pr.rw || [];
+  if (!A.length || !B.length) return null;
+  const ca = weightedCover(A, B);
+  if (!ca) return null;
+  const cov = (ca + weightedCover(B, A)) / 2;
+  let s = cov;
+  if (tokenHit(A[0], [B[0]])) s += 0.1;
+  for (const n of weak) if ((pr.rwWeak || []).includes(n)) s += 0.03;
+  const us = unitSig(pr.u);
+  let kindClash = false;
+  if (old.us && us) {
+    if (old.us.kind !== us.kind) { s -= 0.2; kindClash = true; }
+    else if (Math.abs(old.us.amount - us.amount) < 0.01) s += 0.12;
+    else if (us.amount / old.us.amount > 3 || us.amount / old.us.amount < 1 / 3) s -= 0.08;
+  }
+  const catClash = !!(old.c && pr.c && old.c !== pr.c);
+  if (old.c && pr.c) s += catClash ? -0.25 : 0.05;
+  return { s, cov, clash: kindClash || catClash };
+}
+function relinkCandidates(old) {
+  if (!old.n) return [];
+  ensureReceiptIndex();
+  const t = receiptTokens(old.n);
+  const A = t.strong;
+  if (!A.length) return [];
+  const cand = new Set();
+  for (const tk of A) {
+    for (const i of rcptIndex.words.get(tk) || []) cand.add(i);
+    if (tk.length >= 3) for (const i of rcptIndex.pre3.get(tk.slice(0, 3)) || []) cand.add(i);
+  }
+  const scored = [];
+  for (const i of cand) {
+    const pr = state.products[i];
+    const sc = relinkScore(old, A, t.weak, pr);
+    if (sc && sc.s >= RELINK_MIN) scored.push({ pr, ...sc });
+  }
+  scored.sort((a, b) => b.s - a.s || avail(b.pr) - avail(a.pr) ||
+    minActivePrice(a.pr, true) - minActivePrice(b.pr, true));
+  return scored.slice(0, RCP_MATCH_CAP);
+}
+function relinkLabel(old) {
+  if (old.n) return old.n;
+  const code = String(old.k).replace(/^[^:]*:/, '');
+  return `מוצר שהוסר מהקטלוג · מק"ט ${code}`;
+}
+function relinkRow(item) {
+  const scored = relinkCandidates(item.old);
+  const best = scored[0];
+  if (best && item.old.sorted) { item.old.n = orderLike(item.old.n, best.pr.n); item.old.sorted = false; }
+  let cands = scored.map(x => x.pr.k);
+  if (!cands.length && item.old.n) {
+    // nothing scored — still give the row something to browse: the name's
+    // leading words, shortened until the catalogue answers (as receipt rows do)
+    const words = stripQuotes(item.old.n.toLowerCase()).replace(/[^א-תa-z0-9%\s]/g, ' ')
+      .split(/\s+/).filter(w => /[א-תa-z]/.test(w) && w.length >= 2).slice(0, 3);
+    const found = matchesWithShorten(words.join(' ')).matches;
+    const c = item.old.c;      // same aisle first: "חמוצים" should not open on candy
+    cands = (c ? [...found.filter(p => p.c === c), ...found.filter(p => p.c !== c)] : found).map(p => p.k);
+  }
+  return { cands, base: cands, shown: RCP_CHIPS_FIRST, search: '', skip: false,
+    chosen: best && best.cov >= RELINK_PRESELECT && !best.clash ? best.pr.k : null };
+}
+
+/* Open stored entries as the current list. ctx.source: 'saved' (a saved list,
+   ctx.id), 'merge' (several saved lists) or 'list' (the current list's orphans,
+   merged into what is already there). Straight to the list when nothing needs
+   a decision; otherwise via the #/relink review. */
+async function openEntries(entries, ctx) {
+  let items = resolveListEntries(entries);
+  if (items.some(it => it.how === 'review' && needsRetired(it.old))) {
+    toast('מאתרים מוצרים שהשתנו בקטלוג…');
+    if (await ensureRetired()) items = resolveListEntries(entries);
+  }
+  for (const it of items) if (it.how === 'review') it.row = relinkRow(it);
+  state.relink = { ...ctx, items, heal: true };
+  if (items.some(it => it.how === 'review')) nav('#/relink');
+  else commitRelink();
+}
+
+function commitRelink() {
+  const r = state.relink;
+  if (!r) return;
+  const list = r.source === 'list' ? new Map(state.list) : new Map();
+  const add = (k, q) => list.set(k, Math.min(99, (list.get(k) || 0) + q));
+  let auto = 0, picked = 0, skipped = 0;
+  for (const it of r.items) {
+    if (it.pr) { add(it.pr.k, it.qty); if (it.how === 'auto') auto++; continue; }
+    if (!it.row.skip && it.row.chosen && state.byKey.has(it.row.chosen)) { add(it.row.chosen, it.qty); picked++; }
+    else skipped++;
+  }
+  state.list = list;
+  state.orphans = [];
+  persistList();
+  if (r.source === 'saved' && r.heal) {
+    const s = state.saved.find(x => x.id === r.id);
+    if (s) { s.codes = snapList(list); saveLS(LS.saved, state.saved); }
+  }
+  const parts = [];
+  if (auto) parts.push(auto === 1 ? 'מוצר אחד עודכן לגרסה הנוכחית בקטלוג' : `${auto} מוצרים עודכנו לגרסה הנוכחית בקטלוג`);
+  if (picked) parts.push(picked === 1 ? 'מוצר אחד הוחלף בחלופה שבחרתם' : `${picked} מוצרים הוחלפו בחלופות שבחרתם`);
+  if (skipped) parts.push(skipped === 1 ? 'מוצר אחד דולג' : `${skipped} מוצרים דולגו`);
+  const head = r.source === 'saved' ? `נטענה הרשימה "${r.name}"`
+    : r.source === 'merge' ? r.note
+    : 'הרשימה עודכנה';
+  state.note = head + (parts.length ? ' · ' + parts.join(' · ') : '');
+  state.relink = null;
+  nav('#/build');
+  render();
+}
+
+function relinkH() {
+  const r = state.relink;
+  const rows = r.items.map((it, i) => ({ it, i })).filter(({ it }) => it.how === 'review');
+  const autos = r.items.filter(it => it.how === 'auto');
+  const okCount = r.items.filter(it => it.how === 'ok').length;
+  const chosen = rows.filter(({ it }) => !it.row.skip && it.row.chosen).length;
+  // distinct products: two old items can resolve to one (commit merges them)
+  const total = new Set(r.items.map(it => (it.pr ? it.pr.k : !it.row.skip && it.row.chosen))
+    .filter(Boolean).concat(r.source === 'list' ? [...state.list.keys()] : [])).size;
+  const rowsH = rows.map(({ it, i }) => `
+    <div class="rcp-row rl-row${it.row.skip ? ' off' : ''}">
+      <div class="rcp-row-head">
+        <span class="rl-old"><span class="rl-old-name">${esc(relinkLabel(it.old))}</span>
+          <span class="muted sm">${esc([it.old.u, it.qty > 1 ? it.qty + ' יח׳' : ''].filter(Boolean).join(' · '))}</span></span>
+        <button class="btn-ghost sm" data-action="rl-skip" data-i="${i}">
+          ${it.row.skip ? '↩ בכל זאת להוסיף' : 'דילוג על המוצר'}</button>
+      </div>
+      ${it.row.skip ? '' : `<div class="rcp-chips">
+        <span class="rcp-chip-list">${chipsListH(it.row.cands, it.row.shown, it.row.chosen, 'rl', i)}</span>
+        <span class="rcp-tools"><input class="rcp-search rl-search" data-i="${i}"
+          placeholder="חיפוש מוצר אחר…" value="${esc(it.row.search)}"></span>
+      </div>`}
+    </div>`).join('');
+  const autosH = autos.length ? `<details class="card rl-auto">
+      <summary>✓ ${autos.length === 1 ? 'מוצר אחד עודכן' : autos.length + ' מוצרים עודכנו'} אוטומטית —
+        אותו מוצר ואותה אריזה, בקוד חדש בקטלוג</summary>
+      <ul>${autos.map(it => `<li><span class="muted">${esc(relinkLabel(it.old))}</span> ← ${esc(it.pr.n)}</li>`).join('')}</ul>
+    </details>` : '';
+  const title = r.source === 'saved' ? `„${r.name}“` : r.source === 'merge' ? 'הרשימות שאוחדו' : 'הרשימה שלך';
+  return `<div class="wrap page">
+    <a class="back-link" href="#/${r.source === 'list' ? 'build' : 'saved'}">← ביטול</a>
+    <h1 class="page-title">עדכון מוצרים ברשימה</h1>
+    <p class="page-sub">הקטלוג מתעדכן מדי יום, ו־${rows.length === 1 ? 'מוצר אחד' : rows.length + ' מוצרים'}
+      מ${esc(title)} כבר לא מופיעים בו כמו שנשמרו — לרוב אותו מוצר באריזה או בקוד חדש.
+      בחרו חלופה לכל אחד (ההתאמה הקרובה מסומנת מראש כשהיא ודאית מספיק), או דלגו.</p>
+    <div class="rcpt-grid">
+      <div>
+        ${autosH}
+        <div class="card rcpt-review">
+          <div class="list-head"><h2>מוצרים לעדכון</h2>
+            <span class="muted">נבחרו ${chosen} מתוך ${rows.length}${okCount ? ` · ${okCount} מוצרים נמצאו כמו שהם` : ''}</span></div>
+          ${rowsH}
+        </div>
+        ${r.source === 'saved' ? `<label class="rcpt-save-opt">
+          <input type="checkbox" id="rlHeal"${r.heal ? ' checked' : ''}>
+          <span>לעדכן גם את הרשימה השמורה עם הבחירות — כדי שבפעם הבאה תיטען מיד</span>
+        </label>` : ''}
+        <div class="rcpt-ctas">
+          <button class="btn-primary lg" data-action="rl-commit"${total ? '' : ' disabled'}>טעינת הרשימה · ${total} מוצרים</button>
+          <a class="btn-outline" href="#/${r.source === 'list' ? 'build' : 'saved'}">ביטול</a>
+        </div>
+      </div>
+      <aside class="bld-side">
+        <div class="side-card tinted">
+          <h2>למה זה קורה?</h2>
+          <p class="muted sm">המחירים מגיעים מקבצי השקיפות של הרשתות. כשרשת מחליפה אריזה,
+            משנה ברקוד או מפסיקה למכור מוצר — הקוד שנשמר ברשימה כבר לא קיים.
+            מוצר זהה (אותו שם ואותה אריזה) מעודכן אוטומטית; כל השאר מחכה לאישור שלכם,
+            כדי שלא נחליף לכם מוצר בלי לשאול.</p>
+        </div>
+      </aside>
+    </div>
+  </div>`;
+}
+
+/* data-load upkeep: give items of older saved lists their snapshot while their
+   keys still resolve, so the NEXT catalogue change finds them by name */
+function backfillSnapshots() {
+  let changed = false;
+  for (const s of state.saved) {
+    if (!Array.isArray(s.codes)) continue;
+    s.codes = s.codes.map(e => {
+      if (!Array.isArray(e) || e.length >= 3) return e;
+      const pr = state.byKey.get(e[0]);
+      if (!pr) return e;
+      changed = true;
+      return itemSnap(e[0], e[1]);
+    });
+  }
+  if (changed) saveLS(LS.saved, state.saved);
+}
+
 /* ---------- router ---------- */
 const APP_SCREENS = new Set(['build', 'results', 'basket', 'done', 'saved', 'profile',
-  'receipt', 'recipe', 'search', 'terms', 'accessibility']);
+  'receipt', 'recipe', 'relink', 'search', 'terms', 'accessibility']);
 function nav(hash) { location.hash = hash; }
 function route() {
   // split BEFORE decoding — chain labels may contain an encoded slash (%2F)
@@ -2023,6 +2459,7 @@ function route() {
   if (!known.has(screen)) screen = 'build';
   if (screen === 'basket' && !state.chains.includes(state.routeParam)) screen = 'results';
   if (screen === 'done' && !state.lastHandoff) screen = 'build';
+  if (screen === 'relink' && !state.relink) screen = 'saved';
   state.screen = screen;
   if (screen !== 'basket') state.subs = {};
   render();
@@ -2124,6 +2561,20 @@ function noteH() {
   if (!state.note) return '';
   return `<div class="note-banner"><span class="note-check">✓</span><span class="note-text">${esc(state.note)}</span>
     <button class="note-x" data-action="dismiss-note" aria-label="סגירה">×</button></div>`;
+}
+/* list items today's catalogue lacks (restoreList keeps them aside, never drops them) */
+function orphansH() {
+  const n = state.orphans.length;
+  if (!n) return '';
+  const names = state.orphans.map(e => relinkLabel(oldInfo(e))).slice(0, 3).join(', ');
+  return `<div class="relink-banner" role="status">
+    <span class="relink-text"><b>${n === 1 ? 'מוצר אחד' : n + ' מוצרים'} מהרשימה כבר לא בקטלוג בגרסה שנשמרה</b>
+      <span class="muted sm">${esc(names)}${n > 3 ? ' ועוד' : ''} — לרוב אותו מוצר באריזה או בקוד חדש.</span></span>
+    <span class="relink-ctas">
+      <button class="btn-primary sm" data-action="relink-orphans">בחירת חלופות</button>
+      <button class="btn-ghost sm" data-action="drop-orphans">הסרה</button>
+    </span>
+  </div>`;
 }
 function errorCardH() {
   return `<div class="wrap"><div class="error-card">
@@ -2488,6 +2939,7 @@ function buildH() {
           ${pagerH}
         </div>
         ${noteH()}
+        ${orphansH()}
         <div class="card list-card">
           <div class="list-head"><h2>הרשימה שלי</h2><span class="muted">${t.items.length} מוצרים ברשימה</span></div>
           ${t.items.length ? rows : `<div class="list-empty">הרשימה ריקה — חפשו מוצר, בחרו מהמוצרים הנפוצים,
@@ -2833,6 +3285,7 @@ function savedH() {
     : selCount === 1 ? 'סמנו רשימה נוספת כדי לאחד' : 'סמנו שתי רשימות או יותר כדי לאחד אותן';
   const cards = entries.map(s => {
     const prods = s.codes.map(([k]) => state.byKey.get(k)).filter(Boolean);
+    const changed = s.codes.length - prods.length;   // resolved on load, see openEntries
     const best = s.codes.reduce((sum, [k, q]) => {
       const pr = state.byKey.get(k);
       const mp = pr ? minActivePrice(pr) : Infinity;
@@ -2846,7 +3299,8 @@ function savedH() {
           aria-label="${sel ? 'הסרת הרשימה מהאיחוד' : 'הוסף רשימה לצורך איחוד רשימות'}">${sel ? '✓' : '+'}</button></div>
       <div class="saved-name">${esc(s.name)}</div>
       <div class="saved-preview">${esc(prods.slice(0, 4).map(p => p.n.split(' ').slice(0, 2).join(' ')).join(', '))}${prods.length > 4 ? ' ועוד' : ''}</div>
-      <div class="saved-foot"><span class="muted sm">${prods.length} מוצרים</span><span class="saved-price">${ils0(best)}</span></div>
+      <div class="saved-foot"><span class="muted sm">${s.codes.length} מוצרים${changed
+        ? ` · <span class="saved-changed" title="מוצרים שהקוד שלהם השתנה בקטלוג — נאתר להם התאמה בטעינה">${changed} השתנו בקטלוג</span>` : ''}</span><span class="saved-price">${ils0(best)}</span></div>
       <button class="btn-outline block" data-action="load-list" data-id="${esc(s.id)}">טעינת הרשימה</button>
       ${s.own ? `<button class="btn-ghost sm" data-action="delete-list" data-id="${esc(s.id)}">מחיקה</button>` : ''}
     </div>`;
@@ -3181,6 +3635,7 @@ function render() {
     case 'profile': body = profileH(); break;
     case 'receipt': body = receiptH(); break;
     case 'recipe': body = recipeH(); break;
+    case 'relink': body = relinkH(); break;
     case 'search': body = searchH(); break;
     case 'terms': body = termsH(); break;
     case 'accessibility': body = accessibilityH(); break;
@@ -3233,8 +3688,9 @@ function bindScreen() {
   }
   const rcpText = $('#rcpText');
   if (rcpText) rcpText.addEventListener('input', () => { state.recipe.text = rcpText.value; });
-  // per-row product search (recipe rows + receipt rows): replaces only that
-  // row's chips in place, so the input keeps focus while typing
+  // per-row product search (recipe, receipt and relink rows): replaces only
+  // that row's chips in place, so the input keeps focus while typing. An empty
+  // box restores the row's own candidates (row.base, else its term's matches).
   const bindChipSearch = (inp, getRow, listHFor) => {
     let timer = 0;
     inp.addEventListener('input', () => {
@@ -3243,14 +3699,15 @@ function bindScreen() {
         const row = getRow();
         if (!row) return;
         row.search = inp.value;
-        row.cands = recipeMatches(inp.value.trim() || row.term).map(p => p.k);
+        const q = inp.value.trim();
+        row.cands = !q && row.base ? row.base : recipeMatches(q || row.term).map(p => p.k);
         row.shown = RCP_CHIPS_FIRST;
         const list = inp.closest('.rcp-chips')?.querySelector('.rcp-chip-list');
         if (list) { list.innerHTML = listHFor(row); scanImages(); }
       }, 250);
     });
   };
-  document.querySelectorAll('.rcp-search:not(.rcpt-alt-search)').forEach(inp => bindChipSearch(inp,
+  document.querySelectorAll('.rcp-search:not(.rcpt-alt-search):not(.rl-search)').forEach(inp => bindChipSearch(inp,
     () => state.recipe.ingredients[+inp.dataset.i],
     row => rcpChipsListH(row, +inp.dataset.i)));
   document.querySelectorAll('.rcpt-alt-search').forEach(inp => bindChipSearch(inp,
@@ -3260,6 +3717,11 @@ function bindScreen() {
     },
     alt => chipsListH(alt.cands, alt.shown,
       state.receipt.items[+inp.dataset.i].pr?.k || null, 'rcpt-alt', +inp.dataset.i)));
+  document.querySelectorAll('.rl-search').forEach(inp => bindChipSearch(inp,
+    () => state.relink && (state.relink.items[+inp.dataset.i] || {}).row,
+    row => chipsListH(row.cands, row.shown, row.chosen, 'rl', +inp.dataset.i)));
+  const rlHeal = $('#rlHeal');
+  if (rlHeal) rlHeal.addEventListener('change', () => { if (state.relink) state.relink.heal = rlHeal.checked; });
   const rf = $('#rcptFile');
   if (rf) {
     rf.addEventListener('change', () => startReceiptScan(rf.files && rf.files[0]));
@@ -3509,7 +3971,7 @@ function saveCurrentList() {
   const name = prompt('שם לרשימה:', 'הרשימה שלי · ' + (state.date || ''));
   if (name === null) return;
   state.saved.unshift({ id: 'own-' + Date.now(), kicker: 'שלי',
-    name: name.trim() || 'רשימה ללא שם', codes: [...state.list], created: state.date });
+    name: name.trim() || 'רשימה ללא שם', codes: snapList(state.list), created: state.date });
   saveLS(LS.saved, state.saved);
   toast('הרשימה נשמרה');
   nav('#/saved');
@@ -3630,7 +4092,7 @@ document.addEventListener('click', e => {
     case 'dec': bumpItem(key, -1); render(); break;
     case 'remove': bumpItem(key, -99); render(); break;
     case 'clear-list':
-      if (confirm('לנקות את כל הרשימה?')) { state.list.clear(); persistList(); render(); }
+      if (confirm('לנקות את כל הרשימה?')) { state.list.clear(); state.orphans = []; persistList(); render(); }
       break;
     case 'toggle-chain': {
       const c = btn.dataset.chain;
@@ -3729,11 +4191,11 @@ document.addEventListener('click', e => {
     case 'load-list': {
       const entry = savedEntries().find(s => s.id === btn.dataset.id);
       if (!entry) break;
-      if (state.list.size && !confirm('להחליף את הרשימה הנוכחית ברשימה "' + entry.name + '"?')) break;
-      state.list = new Map(entry.codes.filter(([k]) => state.byKey.has(k)));
-      persistList();
-      state.note = 'נטענה הרשימה "' + entry.name + '"';
-      nav('#/build'); render(); break;
+      if ((state.list.size || state.orphans.length) &&
+          !confirm('להחליף את הרשימה הנוכחית ברשימה "' + entry.name + '"?')) break;
+      // unknown keys are resolved (auto-swap or #/relink review), never dropped
+      openEntries(entry.codes, { source: 'saved', id: entry.own ? entry.id : null, name: entry.name });
+      break;
     }
     case 'delete-list': {
       if (!confirm('למחוק את הרשימה השמורה?')) break;
@@ -3743,17 +4205,46 @@ document.addEventListener('click', e => {
     }
     case 'merge-lists': {
       const picks = savedEntries().filter(s => state.selectedLists[s.id]);
-      const seen = new Map(); let dupes = 0;
-      for (const s of picks) for (const [k] of s.codes) {
-        if (!state.byKey.has(k)) continue;
-        if (seen.has(k)) dupes++; else seen.set(k, 1);
+      // a product in several lists becomes one row (resolved to today's keys
+      // first, so an old and a new key of one product also merge)
+      const seen = new Map();
+      for (const s of picks) for (const e of s.codes) {
+        if (!Array.isArray(e) || e[0] == null) continue;
+        const k = (state.byKey.get(e[0]) || {}).k || e[0];
+        if (!seen.has(k)) seen.set(k, [...e]);
       }
-      state.list = seen;
-      persistList();
+      const total = picks.reduce((n, s) => n + s.codes.length, 0);
+      const dupes = total - seen.size;
       state.selectedLists = {};
-      state.note = `אוחדו ${picks.length} רשימות ל־${seen.size} מוצרים` + (dupes ? ` · ${dupes} כפילויות הוסרו` : ' · ללא כפילויות');
-      nav('#/build'); render(); break;
+      openEntries([...seen.values()].map(e => (e[1] = 1, e)), { source: 'merge',
+        note: `אוחדו ${picks.length} רשימות ל־${seen.size} מוצרים` + (dupes ? ` · ${dupes} כפילויות הוסרו` : ' · ללא כפילויות') });
+      break;
     }
+    case 'rl-pick': {
+      const it = state.relink && state.relink.items[+btn.dataset.i];
+      if (it && it.row) {
+        it.row.chosen = it.row.chosen === btn.dataset.key ? null : btn.dataset.key;
+        render();
+      }
+      break;
+    }
+    case 'rl-more': {
+      const it = state.relink && state.relink.items[+btn.dataset.i];
+      if (it && it.row) { it.row.shown += RCP_CHIPS_STEP; render(); }
+      break;
+    }
+    case 'rl-skip': {
+      const it = state.relink && state.relink.items[+btn.dataset.i];
+      if (it && it.row) { it.row.skip = !it.row.skip; render(); }
+      break;
+    }
+    case 'rl-commit': commitRelink(); break;
+    case 'relink-orphans': openEntries(state.orphans, { source: 'list' }); break;
+    case 'drop-orphans':
+      if (confirm('להסיר מהרשימה את המוצרים שלא נמצאו בקטלוג?')) {
+        state.orphans = []; persistList(); render();
+      }
+      break;
     case 'dismiss-note': state.note = ''; render(); break;
     case 'hide-ext-promo': saveLS('slim-ext-promo-hidden', true); render(); break;
     case 'save-profile': {
@@ -3778,10 +4269,12 @@ document.addEventListener('click', e => {
       clearTimeout(cloudTimer);                  // never sync the cleared state
       firebase.auth().signOut().then(() => {
         state.auth.user = null;
-        for (const k of [LS.list, LS.profile, LS.saved, LS.orders, LS.stats]) {
+        for (const k of [LS.list, LS.profile, LS.saved, LS.orders, LS.stats, SYNC_META]) {
           localStorage.removeItem(k);
         }
         state.list = new Map();
+        state.orphans = [];
+        state.relink = null;
         state.profile = { name: '', email: '', phone: '' };
         state.saved = [];
         state.orders = [];
@@ -3802,6 +4295,7 @@ document.addEventListener('click', e => {
     case 'reset-profile': {
       if (!confirm('למחוק את הפרופיל, הרשימות וההיסטוריה מהדפדפן?')) break;
       Object.values(LS).forEach(k => localStorage.removeItem(k));
+      localStorage.removeItem(SYNC_META);
       location.hash = ''; location.reload(); break;
     }
   }

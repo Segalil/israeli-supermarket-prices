@@ -77,6 +77,12 @@ Downloading is done via the il-supermarket-scraper library (PyPI).
   (produce runs last); ~67% of products classify, index 0 = "אחר". When tuning
   keywords, keep the order-sensitivity tests in test_category_classification
   green (שוקולד חלב → snacks, רוטב עגבניות → pantry, etc.).
+  It also writes site/data/retired.json.gz ({date, keys:{key:[name,unit,cat]}}):
+  every key the snapshots of the last 180 days carried that today's dataset
+  lacks (retired_names; keys spelled by the shared product_key()). Lists saved
+  as bare keys depend on it to be matched by name — see "list resilience".
+  ~10k keys / ~220 KB gz, fetched by the client only when needed; the scan adds
+  ~15 s to the Pages build.
 - site/ — "סלים=Slim", a static RTL Hebrew SPA (vanilla JS, no deps) implementing
   the Slim product design (basket-with-equals logo, Suez One + Assistant fonts,
   #f7f4f1 ground / #35858e teal, pill controls, 28px cards; tokens at the top of
@@ -221,11 +227,33 @@ Downloading is done via the il-supermarket-scraper library (PyPI).
     tests/test_recipe_import.py → tests/recipe_harness.js over
     samples/recipe-import/fixture-recipe.html (loader shared in
     tests/load_app.js).
+  * list resilience (#/relink): keys retire (relisted barcodes, chain-scoped
+    codes, "n:" merges that dissolve when a chain skips a day), and loading
+    used to DROP unknown keys silently — old lists came back half empty. Every
+    stored item is now [key, qty, name, unit, cat] (itemSnap/snapList; older
+    readers destructure [k, q] and ignore the rest). resolveListEntries():
+    ok = key or alias; auto = identical name signature AND size (nameSig
+    MIRRORS name_signature — test_list_relink compares them over real names;
+    "n:" keys carry their own signature, old pre-size ones too); everything
+    else goes to a review screen with IDF-weighted, category-guarded candidates
+    (relinkScore; best pre-selected only at cov >= RELINK_PRESELECT with no
+    size-kind/category clash — a plain token count pre-selected a PARO brush
+    for "מברשת שיניים סנסודיין"). Nothing is dropped without the user: the
+    current list keeps unresolved items as state.orphans (persisted with the
+    list, banner on #/build). Bare legacy keys are named from retired.json.gz.
+    Loading heals the saved list; backfillSnapshots() adds snapshots to old
+    lists while their keys still resolve. Tests: tests/test_list_relink.py
+    over tests/relink_harness.js.
   * auth: FIREBASE_CONFIG=null → device-profile mode; paste a Firebase web
     config to enable real login/signup (email+password + Google popup +
     password reset) with per-user Firestore sync — SYNC_KEYS localStorage
     slices are pushed debounced into users/{uid} and pulled on login (cloud
-    wins if the doc exists, else the device state seeds it). SDK loads
+    wins if the doc exists, else the device state seeds it — UNLESS this
+    device holds unpushed edits newer than the cloud copy: slim-sync-meta-v1
+    {uid, dirtyAt, pushedAt}. Without that, saving a list and reloading
+    within the 1.5 s push debounce reverted it. Dirty-marking and pushing
+    both wait for the session's pull (auth.pulled), so boot-time derived
+    saves never outvote another device). SDK loads
     lazily from gstatic (compat builds); any init failure degrades to local.
     Firestore rules + setup steps live in the FIREBASE_CONFIG comment.
   All persistence is localStorage (slim-*-v2 keys, migrates smart-basket-list-v1).

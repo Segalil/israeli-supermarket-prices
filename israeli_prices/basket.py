@@ -36,6 +36,8 @@ PROMO_HEB_TO_COL = {
 
 DATA_DIR = "data"
 SITE_DATA_PATH = os.path.join("site", "data", "products.json.gz")
+# lazily fetched by the client only when a saved list holds unknown keys
+RETIRED_PATH = os.path.join("site", "data", "retired.json.gz")
 
 # promo flags bitmask (also decoded in site/app.js)
 PROMO_CLUB, PROMO_COUPON, PROMO_CONDITIONAL = 1, 2, 4
@@ -151,6 +153,18 @@ def barcode_key(barcode):
         stripped = b.lstrip("0")
         return stripped if stripped else None    # all-zero pseudo-barcodes stay chain-scoped
     return None
+
+
+def product_key(barcode, chain, name):
+    """The pre-merge key of one snapshot row: its barcode, else chain-scoped.
+
+    Shared by build_site_data and retired_names — the retired map is only
+    useful if it spells keys exactly the way the live dataset once did.
+    """
+    key = barcode_key(barcode)
+    if key is None:
+        key = f"{chain}:{(barcode or '').strip() or name}"
+    return key
 
 
 def format_unit(quantity, unit_qty, unit_of_measure):
@@ -502,9 +516,7 @@ def build_site_data(rows, date="", promo_rows=None):
             continue
         if chain not in chains:
             chains.append(chain)
-        key = barcode_key(r.get("barcode"))
-        if key is None:
-            key = f"{chain}:{(r.get('barcode') or '').strip() or name}"
+        key = product_key(r.get("barcode"), chain, name)
         prod = products.setdefault(key, {"n": name, "u": "", "b": "", "p": {}})
         if len(name) > len(prod["n"]):
             prod["n"] = name
@@ -555,6 +567,47 @@ def build_site_data(rows, date="", promo_rows=None):
         "categories": CATEGORIES,
         "products": out_products,
     }
+
+
+def known_keys(data):
+    """Every key today's dataset answers to: product keys plus merge aliases."""
+    keys = set()
+    for entry in data["products"]:
+        keys.add(entry[0])
+        keys.update(entry[5] or [])
+    return keys
+
+
+def retired_names(snapshot_paths, known, since=""):
+    """Name, unit and category of every key the past snapshots carried but
+    today's dataset does not: {key: [name, unit, categoryIdx]}.
+
+    A saved list stores product KEYS, and keys retire — a pack is relisted under
+    a new barcode, a chain-scoped code leaves with the chain's file. Lists saved
+    before the client kept a name next to each key have nothing else to go on,
+    so this map is what lets them be matched to today's catalogue by name.
+    "n:" merge keys are not listed: they carry their own name signature.
+
+    Snapshots are read newest first, so the latest name a key carried wins.
+    ``since`` (YYYY-MM-DD) bounds how far back to look.
+    """
+    out = {}
+    for path in sorted(snapshot_paths, reverse=True):
+        date = snapshot_date(path)
+        if since and date and date < since:
+            continue
+        for r in load_snapshot_rows(path):
+            chain = r.get("chain", "")
+            name = strip_chain_name(r.get("item_name", ""), chain)
+            if not chain or not name or _parse_price(r.get("price")) is None:
+                continue                  # build_site_data never listed these
+            key = product_key(r.get("barcode"), chain, name)
+            if key in known or key in out:
+                continue
+            unit = format_unit(r.get("quantity"), r.get("unit_qty"),
+                               r.get("unit_of_measure"))
+            out[key] = [name, unit, classify_category(name)]
+    return out
 
 
 def write_site_data(data, out_path=SITE_DATA_PATH):

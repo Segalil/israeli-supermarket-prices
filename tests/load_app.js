@@ -19,7 +19,8 @@ module.exports = function loadApp(exportNames) {
   global.document = {
     querySelector: () => null,
     querySelectorAll: () => [],
-    getElementById: () => null,
+    // the #app root exists, so flows that end in render() can run in node
+    getElementById: id => (id === 'app' ? noopEl() : null),
     addEventListener() {},
     createElement: noopEl,
     documentElement: { dataset: {}, classList: { toggle() {} } },
