@@ -693,8 +693,11 @@ def test_visible_change_line_matches_shelf_prices(pages, model):
     chain's shelf price differed from its previous known price. Only prices
     the page would show count — a hidden outlier must not move the date (on
     7290018198629 a one-day אושר עד outlier produced "השתנו בעדכון הזה" with
-    every 30-day range a single price)."""
+    every 30-day range a single price). And only at the store today's price
+    comes from: אושר עד moves between branches, and a change at another branch
+    is not a change in the prices the page shows."""
     hist = model.hist
+    today_store = hist["stores"][model.date]
     for url, html in product_pages(pages).items():
         key = url.split("/")[3]
         shown = [c for c, p, _cell in price_rows(html) if p is not None]
@@ -702,7 +705,7 @@ def test_visible_change_line_matches_shelf_prices(pages, model):
         for d in hist["dates"]:
             day = sp.clean_prices(hist["prices"][d].get(key, {}))
             for c in shown:
-                if c in day:
+                if c in day and hist["stores"][d].get(c, "") == today_store.get(c, ""):
                     k = (c, hist["stores"][d].get(c, ""))     # per chain AND store
                     if k in last and last[k] != day[c]:
                         newest = d

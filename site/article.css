@@ -128,7 +128,8 @@
    375px as a grid, so each row becomes a card — the product on top, then one
    "chain  price" line per chain in the fixed chain order. Labels come from the
    cells' data-label; the header row stays for screen readers only. */
-@media (max-width: 560px) {
+/* the 6-column /en/ staples table is ~658px wide: cards up to 720px */
+@media (max-width: 720px) {
   .pr .pr-cards-wrap { overflow-x: visible; }
   .pr table.pr-cards, .pr table.pr-cards tbody { display: block; min-width: 0; width: 100%; }
   .pr table.pr-cards caption { display: block; padding: 0 0 10px; }

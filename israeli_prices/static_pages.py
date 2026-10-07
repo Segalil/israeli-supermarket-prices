@@ -519,7 +519,9 @@ def load_price_history(data_dir, today, candidates, window_days=ENTER_WINDOW_DAY
                 continue
             rows[chain] += 1
             if si is not None and si < len(rec):
-                store_rows[chain][rec[si].strip()] += 1
+                # leading zeros are not significant ("055" == "55"), as in
+                # basket.store_type
+                store_rows[chain][rec[si].strip().lstrip("0") or "0"] += 1
             try:
                 p = round(float(rec[pi]), 2)
             except ValueError:
@@ -932,8 +934,12 @@ def attach_history(products, chains, hist, today, common_promos=frozenset()):
         for d in dates:
             # outliers the page hides must not move its "last change" date
             day = clean_prices(hist["prices"][d].get(key, {}))
+            # ... and only at the store today's price comes from: the line
+            # speaks about the prices on the page (אושר עד moves between
+            # branches; a change at another branch is not one of them)
             price_series.append((d, {(c, store_of(d, c)): day[c]
-                                     for c in shown_chains if c in day}))
+                                     for c in shown_chains if c in day
+                                     and store_of(d, c) == ref_store.get(c, "")}))
         pr.price_changed = last_change(price_series)
         # each shown chain's last known (clean) price before today AT TODAY'S
         # STORE — the "old" side of the hub's change list, by the same rule
