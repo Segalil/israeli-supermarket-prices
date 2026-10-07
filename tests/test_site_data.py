@@ -425,3 +425,22 @@ def test_short_category_keywords_match_whole_words_only():
              if classify_category(n) != want}
     assert not wrong, wrong
     assert classify_category("WIN שייק חלבון בטעם וניל") != DAIRY
+
+
+def test_storewide_offers_never_displace_a_products_own_promo():
+    """A spend-threshold gift filed against thousands of products used to win
+    the one-promo-per-chain pick and hide the product's real deal (72 product
+    pages lost theirs). It is now dropped BEFORE the pick."""
+    from israeli_prices.basket import STOREWIDE_PROMO_MIN, attach_promos
+
+    def promo(barcode, desc, price="", club="0", coupon="0"):
+        return {"chain": "שופרסל", "barcode": barcode, "description": desc,
+                "discounted_price": price, "min_qty": "1", "club": club,
+                "is_coupon": coupon, "end_date": "2099-01-01"}
+    rows = [promo(str(7290000000000 + i), "קופון קנייה 100 ש\"ח שובר כללי", club="1")
+            for i in range(STOREWIDE_PROMO_MIN + 1)]           # store-wide by count
+    rows.append(promo("7290000000017", "599שח ומעלה-מתנה לבחירה-אונליין", club="1"))  # by wording
+    rows.append(promo("7290000000017", "קופון ח\"ע סוכריות", coupon="1"))
+    got = attach_promos(rows, date="2026-10-06")
+    assert got["7290000000017"]["שופרסל"][1] == "קופון ח\"ע סוכריות"
+    assert "7290000000000" not in got                          # only the voucher → nothing

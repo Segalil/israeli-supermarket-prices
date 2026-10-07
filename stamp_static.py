@@ -23,11 +23,11 @@ import os
 import re
 import sys
 
-# Where each chain's prices come from. The online store is targeted by store id
-# in build_price_db.py; יוחננוף and אושר עד have no online-store id in their
-# stores files, so a representative branch is used (CLAUDE.md roadmap item 2).
-ONLINE_STORE = ("שופרסל", "רמי לוי", "ויקטורי", "יינות ביתן / קרפור", "חצי חינם")
-BRANCH_STORE = ("יוחננוף", "אושר עד")
+# Where each chain's prices come from — ONE map, shared with the price pages.
+# The online store is targeted by store id in build_price_db.py; יוחננוף and
+# אושר עד have no online-store id in their stores files, so a representative
+# branch is used (CLAUDE.md roadmap item 2).
+from israeli_prices.static_pages import BRANCH_STORE, ONLINE_STORE  # noqa: E402
 CHAIN_EN = {
     "שופרסל": "Shufersal", "רמי לוי": "Rami Levy", "ויקטורי": "Victory",
     "יינות ביתן / קרפור": "Yeinot Bitan / Carrefour", "יוחננוף": "Yochananof",

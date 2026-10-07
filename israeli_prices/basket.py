@@ -473,27 +473,61 @@ def _unit_promo_price(raw, min_qty, desc, base):
     return None
 
 
+# Store-wide offers are not deals on a product: a chain files "599שח ומעלה-
+# מתנה לבחירה" (spend 599, get a gift) or a 100 ₪ voucher against thousands of
+# items. Shown as the product's promo they crowd out its real one (the pick
+# below keeps ONE promo per chain) and read as a deal on milk. Measured on the
+# 2026-10-06 promo file, distinct products per (chain, description): vouchers
+# and gifts 13,710 / 11,361 / 10,285 / 4,650 / 530 / 451 / 349; the largest real
+# multi-product deal ("2+1 מתנה" across a range) 268. The cut sits in that gap.
+STOREWIDE_PROMO_MIN = 300
+_SHEKEL = r'(?:ש\s*"?\s*ח|ש״ח|₪)'
+# ... and a description that states a spend threshold or a shekel gift is
+# store-wide whatever its count
+STOREWIDE_PROMO_RE = re.compile(
+    r"\d+\s*" + _SHEKEL + r"\s*ומעלה"         # "599שח ומעלה-מתנה לבחירה"
+    r"|בקני(?:י)?ה\s+(?:של\s+)?מעל"          # "בקנייה מעל 200 ש"ח"
+    r"|מעל\s*\d+\s*" + _SHEKEL +              # "מתנה בקנייה מעל 300 ₪"
+    r"|\d+\s*" + _SHEKEL + r"\s*מתנה")        # "קופון 50ש"ח מתנה"
+
+
+def storewide_promo_descs(promo_rows):
+    """{(chain, description)} of store-wide offers in a promo file: carried by
+    more than STOREWIDE_PROMO_MIN distinct products, or worded as a spend
+    threshold / shekel gift."""
+    carriers = {}
+    for r in promo_rows:
+        chain = r.get("chain", "")
+        desc = clean_name(r.get("description", ""))[:80]
+        if chain and desc:
+            carriers.setdefault((chain, desc), set()).add(
+                product_key(r.get("barcode"), chain, ""))
+    return {k for k, keys in carriers.items()
+            if len(keys) > STOREWIDE_PROMO_MIN or STOREWIDE_PROMO_RE.search(k[1])}
+
+
 def attach_promos(promo_rows, date="", base_lookup=None):
     """Index promos by product key and pick one promo per (product, chain).
 
     Preference order: promos usable in totals (a real per-unit price, no club/
     coupon restriction — min-qty deals included, the client does the bundle
-    math), then restricted promos with a price, then badge-only.
+    math), then restricted promos with a price, then badge-only. Store-wide
+    offers (storewide_promo_descs) are dropped BEFORE the pick, so they can
+    never stand in for the product's own promo.
     Returns {product_key: {chain: [unit_price|None, desc, flags, min_qty]}}.
     """
     base_lookup = base_lookup or {}
+    storewide = storewide_promo_descs(promo_rows)
     by_key = {}
     for r in promo_rows:
         chain = r.get("chain", "")
         desc = clean_name(r.get("description", ""))[:80]
-        if not chain or not desc:
+        if not chain or not desc or (chain, desc) in storewide:
             continue
         end = (r.get("end_date") or "").strip()
         if end and date and end < date:
             continue                      # expired
-        key = barcode_key(r.get("barcode"))
-        if key is None:
-            key = f"{chain}:{(r.get('barcode') or '').strip()}"
+        key = product_key(r.get("barcode"), chain, "")
         min_qty = _promo_min_qty(r)
         price = _unit_promo_price(_parse_price(r.get("discounted_price")),
                                   min_qty, desc, base_lookup.get((key, chain)))

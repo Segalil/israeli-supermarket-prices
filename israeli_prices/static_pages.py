@@ -39,6 +39,8 @@ from collections import Counter, defaultdict
 from datetime import date as _date, timedelta
 
 from .basket import (
+    STOREWIDE_PROMO_MIN,
+    STOREWIDE_PROMO_RE,
     CATEGORIES,
     HEB_TO_COL,
     PROMO_CLUB,
@@ -70,22 +72,10 @@ CHANGES_CAP = 30            # products listed under "changed since last update"
 RELATED_MAX = 8
 ITEMLIST_MAX = 100
 PARTIAL_FILE_RATIO = 0.8    # today's rows vs the median of the last 7 files
-# A promo description one chain attaches to more than this many products in
-# today's dataset is a store-wide offer (spend thresholds, meal-voucher gifts),
-# not a deal on the product. Measured 2026-10-06 per (chain, description): the
-# top counts are 6,515 / 1,571 / 597 (store-wide gifts and vouchers), then
-# 222 / 212 / 143 (real category deals: "30% on face care", an Osem coupon).
-# 300 sits in that gap.
-STOREWIDE_PROMO_MIN = 300
-# ... and descriptions that state a spend threshold or a shekel gift are
-# store-wide whatever their count.
-_SHEKEL = r'(?:ש\s*"?\s*ח|ש״ח|₪)'
-STOREWIDE_PROMO_RE = re.compile(
-    r"\d+\s*" + _SHEKEL + r"\s*ומעלה"         # "599שח ומעלה-מתנה לבחירה"
-    r"|בקני(?:י)?ה\s+(?:של\s+)?מעל"          # "בקנייה מעל 200 ש"ח"
-    r"|מעל\s*\d+\s*" + _SHEKEL +              # "מתנה בקנייה מעל 300 ₪"
-    r"|\d+\s*" + _SHEKEL + r"\s*מתנה")        # "קופון 50ש"ח מתנה"
-
+# Store-wide offers (STOREWIDE_PROMO_MIN / _RE) are defined and dropped in
+# basket.attach_promos, BEFORE its one-promo-per-chain pick — filtering here,
+# after the pick, lost the product's own promo whenever the gift had won it.
+# promo_is_storewide below stays as a guard for datasets built before that.
 CATEGORY_SLUGS = {1: "produce", 2: "dairy", 3: "meat-fish", 4: "bakery",
                   5: "pantry", 6: "snacks", 7: "drinks", 8: "frozen",
                   9: "cleaning", 10: "toiletries"}
@@ -169,7 +159,7 @@ PSEUDO_ITEM_EXACT = ("שקית", "שקיות")      # a name that is ONLY a bag
 ALCOHOL_WORDS = (
     # generic
     "יין", "יינות", "בירה", "בירות", "בירת", "וודקה", "ודקה", "וויסקי", "ויסקי",
-    "ערק", "עראק", "ליקר", "ג'ין", "רום", "טקילה", "קאווה", "שמפניה",
+    "ערק", "עראק", "ארק", "הארק", "ליקר", "ג'ין", "רום", "טקילה", "קאווה", "שמפניה",
     "קוניאק", "ברנדי", "מרטיני", "סאקה", "אלכוהול", "אלכהול", "פרוסקו",
     "בורבון", "אוזו", "שנדי", "וינו", "יקב", "יקבי",
     # wine styles and grape varieties
@@ -196,7 +186,7 @@ NOT_ALCOHOL_PHRASES = ("אנטיגן קורונה", "סלמי קוניאק", "נ
                        "ענבי ריזלינג", "פלפל אדום יבש")
 # A name that says it is a soft drink or grape juice is not alcohol, whatever
 # else it carries ("משקה קל מרלו ענבים", "מיץ תירוש ענבים ... יקבי כרמל").
-NOT_ALCOHOL_NAMES = ("משקה קל", "תירוש", "מיץ ענבים")
+NOT_ALCOHOL_NAMES = ("משקה קל", "תירוש", "מיץ ענבים", "בירה שחורה", "מאלט", "מאלטי")
 
 # Strings no generated file may contain (tests scan every file for them).
 BANNED_HE = ("הכי זול", "הזול ביותר", "הזולה", "זול ביותר", "המשתלם")
@@ -615,8 +605,10 @@ def _promo_text(promo, shelf=None):
     if not desc or has_banned_text(desc):
         desc = "מבצע"
     details = []
+    # "29.30 פקדון סודה…": the file's DiscountedPrice may include the bottle
+    # deposit, so the per-unit number would contradict the text beside it
     if price is not None and (shelf is None or price < shelf - 0.004) \
-            and deal_price_agrees(desc, price):
+            and deal_price_agrees(desc, price) and not re.search(r"פי?קדון", desc):
         details.append(f"{shekel(price)} ליחידה")
     if min_qty and min_qty > 1:
         details.append(f"בקנייה של {int(min_qty)}")
@@ -744,7 +736,7 @@ def size_conflict(name, unit):
 class Product:
     __slots__ = ("key", "name", "unit", "brand", "cat", "prices", "shown",
                  "promos", "alcohol", "history", "title_name", "size_conflict",
-                 "price_changed", "content_modified")
+                 "price_changed", "content_modified", "prev_known")
     # price_changed: the newest snapshot on which a shown chain's SHELF PRICE
     #   differed from that chain's previous known price (the visible
     #   "שינוי אחרון במחירים המוצגים" line), or None.
@@ -816,6 +808,7 @@ def select_products(data, hist, cands, common_promos=frozenset()):
                                 [pm[1] for pm in raw_promos if pm and pm[1]])
         pr.size_conflict = size_conflict(pr.name, pr.unit)
         pr.history, pr.price_changed, pr.content_modified = [], None, None
+        pr.prev_known = {}
         if pr.alcohol:
             stats["alcohol_no_promo_text"] += 1
         if pr.size_conflict:
@@ -893,9 +886,16 @@ def attach_history(products, chains, hist, today, common_promos=frozenset()):
         # the visible "last change" line: shelf prices of the shown chains only
         price_series = []
         for d in dates:
-            day = hist["prices"][d].get(key, {})
+            # outliers the page hides must not move its "last change" date
+            day = clean_prices(hist["prices"][d].get(key, {}))
             price_series.append((d, {c: day[c] for c in shown_chains if c in day}))
         pr.price_changed = last_change(price_series)
+        # each shown chain's last known (clean) price before today — the "old"
+        # side of the hub's change list, by the same carried-value rule
+        pr.prev_known = {}
+        for d, vals in price_series:
+            if d < today:
+                pr.prev_known.update(vals)
 
         # sitemap lastmod / dateModified: shelf prices or the promo text shown
         promo_changed = None
@@ -912,13 +912,17 @@ def attach_history(products, chains, hist, today, common_promos=frozenset()):
         pr.content_modified = max((d for d in (pr.price_changed, promo_changed) if d),
                                   default=None)
 
+    # the hub's "changed since the previous update" list: exactly the pages that
+    # say "השתנו בעדכון הזה" (price_changed == today), old = last known price
     changes = []
     if prev_day:
         for key in sorted(products, key=lambda k: _sort_key(products[k])):
             pr = products[key]
-            prev = clean_prices(hist["prices"][prev_day].get(key, {}))
-            diffs = [(c, prev[c], s) for c, s in zip(chains, pr.shown)
-                     if s is not None and c in prev and abs(prev[c] - s) > 0.004]
+            if pr.price_changed != today:
+                continue
+            diffs = [(c, pr.prev_known[c], s) for c, s in zip(chains, pr.shown)
+                     if s is not None and c in pr.prev_known
+                     and abs(pr.prev_known[c] - s) > 0.004]
             if diffs:
                 changes.append((key, diffs))
     return changes, prev_day
@@ -1110,7 +1114,8 @@ def product_title(title_name, today):
     while len(words) > 2 and len(" ".join(words)) > limit - 1:
         words.pop()
         cut = True
-    while len(words) > 2 and _ends_with_digit(words[-1]):
+    while len(words) > 2 and (_ends_with_digit(words[-1]) or
+                              re.fullmatch(r"[*x×X+/\-]+", words[-1])):
         words.pop()
         cut = True
     core = " ".join(words).rstrip(_TRAIL_PUNCT)

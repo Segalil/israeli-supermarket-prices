@@ -687,14 +687,17 @@ def test_promo_only_and_reappearance_do_not_move_the_price_change_line(monkeypat
 
 def test_visible_change_line_matches_shelf_prices(pages, model):
     """Over the REAL output: the visible line is the newest day a shown
-    chain's shelf price differed from its previous known price."""
+    chain's shelf price differed from its previous known price. Only prices
+    the page would show count — a hidden outlier must not move the date (on
+    7290018198629 a one-day אושר עד outlier produced "השתנו בעדכון הזה" with
+    every 30-day range a single price)."""
     hist = model.hist
     for url, html in product_pages(pages).items():
         key = url.split("/")[3]
         shown = [c for c, p, _cell in price_rows(html) if p is not None]
         last, newest = {}, None
         for d in hist["dates"]:
-            day = hist["prices"][d].get(key, {})
+            day = sp.clean_prices(hist["prices"][d].get(key, {}))
             for c in shown:
                 if c in day:
                     if c in last and last[c] != day[c]:
@@ -920,3 +923,36 @@ def test_store_type_tuples_for_reuse():
     assert set(sp.ONLINE_STORE) | set(sp.BRANCH_STORE) == set(sp.FIXED_CHAINS)
     assert all(sp.chain_store_type(c) == sp.ONLINE for c in sp.ONLINE_STORE)
     assert all(sp.chain_store_type(c) == sp.BRANCH for c in sp.BRANCH_STORE)
+
+
+# follow-ups from the second review ---------------------------------------------
+def test_arak_spellings_and_malt_drinks():
+    assert sp.is_alcohol("עלית הארק 40% 700 מ\"")
+    assert sp.is_alcohol("ארק אשקלון 40% 700 מ")
+    # Israeli "בירה שחורה" / malt drinks are non-alcoholic soft drinks
+    assert not sp.is_alcohol("בירה שחורה נשר מאלט 1.5 ליטר")
+    assert not sp.is_alcohol("משקה מאלט קוואס כהה 1.5 ליטר")
+
+
+def test_deposit_promo_prints_no_contradicting_unit_price():
+    desc, details = sp._promo_text([32.90, "29.30 פקדון סודה טמפו 500*12 מ\"ל-ישיר", 0, 1], shelf=40.0)
+    assert not any("ליחידה" in d for d in details)
+
+
+def test_titles_never_end_on_a_pack_sign():
+    t = sp.product_title("קוקה קולה זירו משקה קולה מוגז דל קלוריות 6 * 1.5 ליטר", "2026-10-06")
+    core = t.split(" — ")[0].rstrip("…").strip()
+    assert not core.endswith(("*", "6")), t
+
+
+def test_hub_change_list_agrees_with_the_pages(pages, model):
+    """The hub's count of changed products and the pages saying "השתנו בעדכון
+    הזה" are one set (both use the carried last-known shown price)."""
+    changed_pages = {url.split("/")[3] for url, html in product_pages(pages).items()
+                     if "השתנו בעדכון הזה" in html}
+    hub = pages["/prices/"]
+    m = re.search(r"השתנה מחיר המדף של (?:<span[^>]*>)?([\d,]+)(?:</span>)? מוצרים", hub)
+    assert m, "hub no longer states how many products changed"
+    listed = set(re.findall(r'href="/prices/p/(\d+)/"', hub.split("שמחיר המדף שלהם השתנה", 1)[1]))
+    assert listed <= changed_pages, listed - changed_pages
+    assert int(m.group(1).replace(",", "")) == len(changed_pages)
