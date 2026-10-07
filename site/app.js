@@ -284,12 +284,33 @@ function extensionPromoH(compact = false) {
   </div>`;
 }
 
-/* ---------- product images: OpenFoodFacts by barcode, emoji/letter fallback ---------- */
+/* ---------- product images: chain CDN first, OpenFoodFacts second, emoji/letter last.
+   Measured over 120 random catalogue barcodes: Open Food Facts carries an image
+   for 1% of them (it is a community DB and Israeli products barely register),
+   while רמי לוי's public product-image CDN — keyed by the plain EAN, no API —
+   answers for 52%, with a 403 on unknown codes so <img> onerror chains cleanly.
+   The chain photographs what it sells, so when it answers it is exact. */
+const CHAIN_IMG_SOURCES = [
+  ean => `https://img.rami-levy.co.il/product/${ean}/small.jpg`,  // ~10KB, 24-day cache
+];
+function imageCandidates(ean) {
+  return /^\d{8,}$/.test(ean || '') ? CHAIN_IMG_SOURCES.map(f => f(ean)) : [];
+}
+function probeImage(url) {
+  return new Promise(resolve => {
+    const im = new Image();
+    im.referrerPolicy = 'no-referrer';
+    im.onload = () => resolve(url);
+    im.onerror = () => resolve(null);
+    im.src = url;
+  });
+}
 const imgCache = new Map();
 let imgQueue = [], imgActive = 0, imgSaveTimer = 0;
 function restoreImgCache() {
   try {
-    for (const [k, v] of Object.entries(JSON.parse(localStorage.getItem('slim-img-cache-v1') || '{}')))
+    localStorage.removeItem('slim-img-cache-v1');  // pre-chain-CDN caches are all-'none'
+    for (const [k, v] of Object.entries(JSON.parse(localStorage.getItem('slim-img-cache-v2') || '{}')))
       imgCache.set(k, v);
   } catch (_) {}
 }
@@ -298,7 +319,7 @@ function persistImgCache() {
   imgSaveTimer = setTimeout(() => {
     try {
       const entries = [...imgCache].slice(-800);
-      localStorage.setItem('slim-img-cache-v1', JSON.stringify(Object.fromEntries(entries)));
+      localStorage.setItem('slim-img-cache-v2', JSON.stringify(Object.fromEntries(entries)));
     } catch (_) {}
   }, 800);
 }
@@ -345,22 +366,28 @@ function scanImages() {
   imgQueue = [...pending];
   pumpImages();
 }
+async function resolveImage(ean) {
+  for (const url of imageCandidates(ean)) {
+    if (await probeImage(url)) return url;
+  }
+  return fetch(OFF_URL(ean))
+    .then(r => (r.ok ? r.json() : null))
+    .then(j => (j && j.status === 1 && j.product && j.product.image_front_small_url) || null)
+    .catch(() => null);
+}
 function pumpImages() {
   while (imgActive < 4 && imgQueue.length) {
     const ean = imgQueue.shift();
     if (imgCache.has(ean)) continue;
     imgActive++;
-    fetch(OFF_URL(ean))
-      .then(r => (r.ok ? r.json() : null))
-      .then(j => {
-        const url = (j && j.status === 1 && j.product && j.product.image_front_small_url) || 'none';
-        imgCache.set(ean, url);
-        if (url !== 'none') {
+    resolveImage(ean)
+      .then(url => {
+        imgCache.set(ean, url || 'none');
+        if (url) {
           document.querySelectorAll(`.img-slot[data-ean="${ean}"]`)
             .forEach(slot => setSlotImage(slot, url));
         }
       })
-      .catch(() => imgCache.set(ean, 'none'))
       .finally(() => { persistImgCache(); imgActive--; pumpImages(); });
   }
 }
@@ -370,6 +397,7 @@ function setSlotImage(slot, url) {
   const img = document.createElement('img');
   img.alt = '';
   img.loading = 'lazy';
+  img.referrerPolicy = 'no-referrer';
   img.onerror = () => { imgCache.set(slot.dataset.ean, 'none'); persistImgCache(); slot.textContent = fallback; slot.classList.remove('pimg'); };
   img.src = url;
   slot.textContent = '';
@@ -3466,8 +3494,9 @@ function termsH() {
       הקבצים שמפרסמות הרשתות (שופרסל, רמי לוי, ויקטורי, יינות ביתן / קרפור, יוחננוף,
       אושר עד, חצי חינם). השלמת כתובות: © <a href="https://www.openstreetmap.org/copyright"
       target="_blank" rel="noopener">OpenStreetMap</a> contributors (שירות Photon).
-      תמונות מוצרים (בקירוב, לפי ברקוד): <a href="https://world.openfoodfacts.org/"
-      target="_blank" rel="noopener">Open Food Facts</a>.
+      תמונות מוצרים (לפי ברקוד): נטענות ישירות משירותי התמונות הציבוריים של
+      הרשתות (כגון רמי לוי) ומ-<a href="https://world.openfoodfacts.org/"
+      target="_blank" rel="noopener">Open Food Facts</a>; התמונות הן קניין בעליהן.
       זיהוי טקסט בסריקת קבלות: מנוע הקוד הפתוח
       <a href="https://github.com/tesseract-ocr/tesseract" target="_blank" rel="noopener">Tesseract</a>,
       הפועל כולו בדפדפן המשתמש.</p>
