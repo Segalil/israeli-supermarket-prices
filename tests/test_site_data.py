@@ -389,3 +389,39 @@ if __name__ == "__main__":
         fn()
         print(f"PASS {fn.__name__}")
     print("all tests passed")
+
+
+def test_short_category_keywords_match_whole_words_only():
+    """Short keywords used to match as bare word prefixes, and the categories
+    are public on the static price pages: lactose-free milk sat under
+    toiletries ("לק" ⊂ "לקטוז"), spelt bread under cleaning ("כוס" ⊂ "כוסמין"),
+    protein bars under dairy ("חלב" ⊂ "חלבון"), multigrain bread under meat
+    ("דג" ⊂ "דגנים"). Cases measured on the real catalogue."""
+    from israeli_prices.basket import classify_category
+    DAIRY, MEAT, BAKERY, PANTRY, SNACKS, CLEANING, TOILETRIES, PRODUCE = 2, 3, 4, 5, 6, 9, 10, 1
+    cases = {
+        "חלב טרי דל לקטוז 2% תנובה 1 ליטר": DAIRY,
+        "לחם אחיד פלוס כוסמין מרובע 700גר": BAKERY,
+        "לחם 7 דגנים קל 1.1קג ללא שמרים": BAKERY,
+        "כוסברה": PRODUCE,
+        "בצלצלי שאלוט 350 גרם": PRODUCE,          # produce keeps prefix matching
+        "גבינת כבשים עם זיתים": DAIRY,
+        "גבינת קרם שמנת 5% טרה 200 גרם": DAIRY,
+        "גבינת חלומי מחלב בקר 28% משק צוריאל 200 גרם": DAIRY,
+        "במבה במילוי קרם נוגט 30*5 גר": SNACKS,
+        "אסם עוגיות במילוי קרם אגוזים 220 גר": SNACKS,
+        "שקית אצבעות שוקולד 252 גר": SNACKS,
+        "קליק שקית קורנפלקס": SNACKS,
+        "לקקן טופי בטעם דובדבן": SNACKS,
+        "מרק עוף אמיתי 400 ג אוסם": PANTRY,
+        "שקיות אשפה 50 יח": CLEANING,
+        "כוסות חד פעמיות 50 יח": CLEANING,
+        "קרם ידיים לעור יבש 100 מ\"ל": TOILETRIES,
+        "דאו ספריי טיטניום 180 מ\"ל": TOILETRIES,
+        "לק ציפורניים אדום": TOILETRIES,
+        "מיץ100% תפוזים 1 ליטר": 7,              # glued digits still match
+    }
+    wrong = {n: (classify_category(n), want) for n, want in cases.items()
+             if classify_category(n) != want}
+    assert not wrong, wrong
+    assert classify_category("WIN שייק חלבון בטעם וניל") != DAIRY

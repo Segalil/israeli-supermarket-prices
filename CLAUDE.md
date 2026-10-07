@@ -306,13 +306,54 @@ Downloading is done via the il-supermarket-scraper library (PyPI).
   + FAQPage; the hub uses CollectionPage + ItemList), and every /articles/ link
   resolving to a file. site/robots.txt + site/sitemap.xml list them; ADD NEW
   GUIDES TO BOTH. The home entry's <lastmod> is stamped at deploy time with the
-  snapshot date (deploy-pages.yml matches the exact <loc>/<lastmod> shape —
+  snapshot date (stamp_static.py matches the exact <loc>/<lastmod> shape —
   test_sitemap_home_lastmod_is_stampable guards it); guide entries keep the
-  date of their last real content change, updated by hand. robots.txt must keep /data/ crawlable — Googlebot's renderer
+  date of their last real content change, updated by hand — bump the visible
+  "עודכן" line, Article dateModified and <lastmod> TOGETHER. robots.txt must keep /data/ crawlable — Googlebot's renderer
   honours robots.txt for subresources, so blocking it would make the crawler see
   a broken app. Content rule: the guides never print an invented price, percentage
   or statistic, and never crown a chain "the cheapest" — the delivery figures they
-  quote come from CHAIN_META and are labelled הערכה, matching the UI.
+  quote come from CHAIN_META and are labelled הערכה, matching the UI
+  (test_guide_delivery_tables_match_chain_meta parses every delivery table).
+  Never claim chain coverage the data does not have: טיב טעם is never collected,
+  and ויקטורי / חצי חינם are geo-blocked from CI — phrase coverage so it stays
+  true ("the chains whose files were collected in the update").
+- AI visibility (GEO). Most AI crawlers (GPTBot, OAI-SearchBot, ChatGPT-User,
+  ClaudeBot, Claude-User, PerplexityBot, Meta) read only the initial HTML — no
+  JavaScript, and <noscript> is not a documented channel; only Googlebot, bingbot
+  and Applebot render. Measured before this work: a non-JS fetch of / got 38
+  characters ("טוען את מחירי היום…"). Rules that keep the site citable:
+  * index.html carries a real static summary INSIDE #app (.boot-intro: one h1,
+    what Slim is, how it works, the official source, links to every guide,
+    /prices/, /about/, /privacy.html, /en/). The app replaces #app on boot, so
+    the one-h1 rule holds; <noscript> is only the "enable JS" note.
+  * stamp_static.py (deploy) writes the snapshot's date, chain list and
+    per-chain store source (online store vs representative branch:
+    ONLINE_STORE / BRANCH_STORE) into index.html (.data-date / .data-chains /
+    .data-sources) and site/llms.txt ("- Latest data update:" lines), plus the
+    sitemap home <lastmod>. test_seo pins every pattern to match exactly once.
+  * site/llms.txt: facts + page index for agents (English, Hebrew names). No
+    instructions aimed at models — facts only (tested).
+  * site/about/ is the methodology page every data page links to; site/404.html
+    replaces GitHub's default 404 (which named GitHub on every missing URL).
+  * One Organization entity: "@id": https://slim-super.com/#org (legalName
+    Segolan Holdings, logo.png); every Article's author/publisher points at it.
+  * robots.txt keeps ONE "*" group — a bot that finds a group naming it obeys
+    only that group (RFC 9309), which is how AI crawlers get blocked by
+    accident. No nosnippet / noarchive / max-snippet anywhere (Copilot drops
+    noarchive pages from answers). Both are tested.
+  * footH() renders on EVERY screen, onboarding included: it is the rendered
+    app's only link to the static pages, and onboarding is what Googlebot sees.
+  * "#/add/<barcode>,<barcode>*N" (addFromLink) opens the app with those
+    products listed — the link the price pages, /en/ and llms.txt hand out so an
+    answer engine can send a shopper straight into a comparison.
+  * deploy-pages.yml: build_static_pages.py → stamp_static.py → a pre-upload
+    check (stamped facts present, generated pages exist, no GitHub/open-source
+    string in any HTML) → deploy → indexnow_ping.py (URLs whose <lastmod> is
+    since yesterday; key file site/<32 hex>.txt; reaches Bing, which grounds
+    Copilot and ChatGPT search) → a live smoke test with an AI user agent.
+  Owner-only steps (outside the repo): Google Search Console + Bing Webmaster
+  Tools (submit both sitemaps, watch Bing's AI Performance report).
 - extension/ — MV3 Chrome extension ("ליםSlim — העברת סל לרשתות"): bridge.js
   (on slim-super.com + localhost) copies the site's slim-handoff-v1 payload
   into chrome.storage; panel.js (on 6 chain sites, per-chain selector adapters
