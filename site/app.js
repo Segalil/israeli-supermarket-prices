@@ -762,7 +762,8 @@ function restoreList() {
       render();
     });
   }
-  if (!state.list.size && !state.orphans.length && !state.seeded) {   // first visit: seed a sample basket
+  const viaLink = /^#\/add\//.test(location.hash || '');
+  if (!state.list.size && !state.orphans.length && !state.seeded && !viaLink) {   // first visit: seed a sample basket
     for (const pr of state.popular.slice(0, 6)) state.list.set(pr.k, 1);
     state.seeded = true;
     state.note = 'מילאנו רשימת דוגמה כדי שתראו איך ההשוואה עובדת — אפשר לערוך או לנקות אותה.';
@@ -2455,6 +2456,7 @@ function route() {
     .map(p => { try { return decodeURIComponent(p); } catch (_) { return p; } });
   let screen = parts[0] || (state.visited ? 'build' : 'onboarding');
   state.routeParam = parts[1] || '';
+  if (screen === 'add' && state.status === 'live') { addFromLink(state.routeParam); return; }
   const known = new Set(['onboarding', 'setup', ...APP_SCREENS]);
   if (!known.has(screen)) screen = 'build';
   if (screen === 'basket' && !state.chains.includes(state.routeParam)) screen = 'results';
@@ -2465,6 +2467,30 @@ function route() {
   render();
   if (screen === 'results') recordComparison();
   window.scrollTo(0, 0);
+}
+/* "#/add/7290004131074,7290000066318*2" — the pre-filled list link the static
+   price pages, /en/ and llms.txt hand out (an answer engine can give a shopper a
+   link that opens the comparison with the products already in it). Barcodes as
+   printed on the price pages, leading zeros optional, "*N" = quantity. Adds what
+   resolves (a link clicked twice does not double the quantities), then shows the
+   list; location.replace so Back does not re-run it. */
+function addFromLink(param) {
+  let added = 0, missing = 0;
+  for (const part of String(param || '').split(',').slice(0, 60)) {
+    const m = /^\s*([^*]+?)\s*(?:\*\s*(\d+))?\s*$/.exec(part);
+    const code = m ? m[1].trim() : '';
+    if (!code) continue;
+    const pr = state.byKey.get(code) || state.byKey.get(code.replace(/^0+/, ''));
+    if (!pr) { missing++; continue; }
+    const qty = clampQty(m[2] || 1);
+    state.list.set(pr.k, Math.max(state.list.get(pr.k) || 0, qty));
+    added++;
+  }
+  if (added) persistList();
+  state.visited = true; persistPrefs();
+  state.note = (added ? `${added === 1 ? 'מוצר אחד נוסף' : added + ' מוצרים נוספו'} לרשימה מהקישור` : 'לא נוספו מוצרים מהקישור') +
+    (missing ? ` · ${missing === 1 ? 'מוצר אחד לא נמצא' : missing + ' מוצרים לא נמצאו'} בקטלוג של היום` : '') + '.';
+  location.replace('#/build');
 }
 let lastComparisonSig = '';
 function recordComparison() {
@@ -2544,17 +2570,25 @@ function videoH() {
   </section>`;
 }
 
+/* Rendered on EVERY screen, onboarding included: it is the only place the
+   rendered app links to the static pages, and onboarding is what a crawler that
+   runs JavaScript (Googlebot) lands on — without it / linked to nothing. */
 function footH() {
   return `<footer class="foot">
-    <nav class="foot-guides" aria-label="מדריכים">
+    <nav class="foot-guides" aria-label="מדריכים ומידע">
+      <a href="/prices/">מחירי היום</a>
       <a href="/articles/">מדריכים</a>
       <a href="/articles/eifo-hachi-zol/">איפה הכי זול לעשות קניות</a>
       <a href="/articles/mishloach-kniyot/">משלוח קניות עד הבית</a>
       <a href="/articles/chisachon-bakniyot/">איך לחסוך בקניות בסופר</a>
+      <a href="/articles/shufersal-mul-rami-levy/">שופרסל מול רמי לוי</a>
+      <a href="/articles/reshimat-kniyot-chodshit/">רשימת קניות חודשית</a>
       <a href="/articles/mivtzaim-basuper/">מבצעים בסופר</a>
+      <a href="/about/">אודות הנתונים</a>
+      <a href="/en/" hreflang="en" lang="en">English</a>
     </nav>
     <p>© 2026 כל הזכויות שמורות ל־Segolan Holdings</p>
-    <p><a href="#/terms">תנאי שימוש</a> · <a href="#/accessibility">הצהרת נגישות</a></p>
+    <p><a href="#/terms">תנאי שימוש</a> · <a href="/privacy.html">מדיניות פרטיות</a> · <a href="#/accessibility">הצהרת נגישות</a></p>
   </footer>`;
 }
 function noteH() {
@@ -3468,9 +3502,7 @@ function termsH() {
       target="_blank" rel="noopener">OpenStreetMap</a> contributors (שירות Photon).
       תמונות מוצרים (בקירוב, לפי ברקוד): <a href="https://world.openfoodfacts.org/"
       target="_blank" rel="noopener">Open Food Facts</a>.
-      זיהוי טקסט בסריקת קבלות: מנוע הקוד הפתוח
-      <a href="https://github.com/tesseract-ocr/tesseract" target="_blank" rel="noopener">Tesseract</a>,
-      הפועל כולו בדפדפן המשתמש.</p>
+      זיהוי טקסט בסריקת קבלות: מנוע Tesseract, הפועל כולו בדפדפן המשתמש.</p>
       <h2>6. פרטיות ומאגר מידע</h2>
       <p>במסגרת השימוש באתר נאספים ונשמרים פרטים שהמשתמש מוסר — ובהם שם, פרטי
       התקשרות, כתובת למשלוח ורשימות הקניות — וכן נתוני שימוש הנדרשים לתפעול השירות.
@@ -3642,7 +3674,7 @@ function render() {
     default: body = buildH();
   }
   const video = captureVideo();
-  app.innerHTML = (isApp ? navH() : '') + body + (isApp ? footH() : '');
+  app.innerHTML = (isApp ? navH() : '') + body + footH();
   restoreVideo(video);
   bindScreen();
 }

@@ -1,0 +1,34 @@
+# Slim (סלים / ליםSlim)
+
+> Slim (https://slim-super.com) is a free Hebrew web app, no signup, that prices one grocery list across the stores of Israel's leading supermarket chains. Prices come from the official price files the chains must publish every day under Israel's food-sector price-transparency regulations. Promotions and estimated delivery fees are included.
+
+Key facts:
+- Data source: the chains' official price-transparency files (full price and promotion files, per store), published daily by law: https://www.gov.il/he/pages/cpfta_prices_regulations
+- Latest data update: 2026-10-06
+- Chains in the latest update: שופרסל (Shufersal), רמי לוי (Rami Levy), יינות ביתן / קרפור (Yeinot Bitan / Carrefour), יוחננוף (Yochananof), אושר עד (Osher Ad)
+- Where each chain's prices come from: Shufersal: online store; Rami Levy: online store; Yeinot Bitan / Carrefour: online store; Yochananof: representative branch; Osher Ad: representative branch
+- Prices are shelf prices as published for that date. Club-member and coupon promotions are never applied automatically; multi-buy deals are priced per complete bundle. Delivery fees and minimum orders are estimates. The binding price is the one on the chain's site or at the checkout.
+- No chain is "the cheapest" in general: the cheapest chain depends on the basket, that day's promotions and delivery. Slim prices the user's own list instead of naming a winner.
+- Operated by Segolan Holdings (contact: segolen.holdings@gmail.com). Not affiliated with any supermarket chain; chain names are used for identification only.
+
+## Prices and methodology
+- [Today's prices](https://slim-super.com/prices/): daily hub of shelf prices per chain for common products, by category, with the date of the price files
+- [About the data](https://slim-super.com/about/): methodology — sources, which store each chain's prices come from, how promotions, delivery and product matching work, limitations
+- [English summary](https://slim-super.com/en/): the method in English, with a dated table of staple prices per chain
+
+## Use the comparison
+- [Build a list and compare](https://slim-super.com/#/build): the app (requires JavaScript)
+- Pre-filled list link: https://slim-super.com/#/add/7290004131074,7290000066318*2 opens the app with those products in the list (comma-separated barcodes as shown on the price pages; append *N for a quantity), ready to compare
+- [Chrome extension](https://chromewebstore.google.com/detail/onlfneilkoplkekognihmgcglkanajbj): moves the finished list into the chosen chain's online cart, inside the user's own account
+
+## Guides (Hebrew)
+- [Where is it cheapest to shop?](https://slim-super.com/articles/eifo-hachi-zol/): why the answer depends on your basket, promotions and delivery
+- [Grocery delivery](https://slim-super.com/articles/mishloach-kniyot/): delivery fees, minimum orders and delivery windows per chain (estimates)
+- [How to save on groceries](https://slim-super.com/articles/chisachon-bakniyot/): 14 practical ways to lower the monthly bill
+- [Shufersal vs Rami Levy](https://slim-super.com/articles/shufersal-mul-rami-levy/): how to compare the two largest chains fairly
+- [Monthly shopping list](https://slim-super.com/articles/reshimat-kniyot-chodshit/): a full household template
+- [Supermarket promotions](https://slim-super.com/articles/mivtzaim-basuper/): the promotion types in the official files and how to tell a real deal
+- [All guides](https://slim-super.com/articles/)
+
+## Optional
+- [Privacy policy](https://slim-super.com/privacy.html)

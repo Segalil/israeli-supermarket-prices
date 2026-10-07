@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>&#x200E;ליםSlim — השוואת מחירים בסופר: איפה הכי זול לעשות קניות</title>
-<meta name="description" content="בונים רשימת קניות אחת, וסלים משווה אותה מול חנויות האונליין של שופרסל, רמי לוי, ויקטורי, יינות ביתן / קרפור, יוחננוף ועוד — כולל מבצעים ודמי משלוח. חינם ובלי הרשמה.">
+<meta name="description" content="בונים רשימת קניות אחת, וסלים משווה אותה בין רשתות הסופר המובילות — שופרסל, רמי לוי, יינות ביתן / קרפור, יוחננוף ועוד — לפי קבצי המחירים הרשמיים, כולל מבצעים ודמי משלוח. חינם ובלי הרשמה.">
 <link rel="canonical" href="https://slim-super.com/">
 <meta name="robots" content="index, follow, max-image-preview:large">
 <meta name="theme-color" content="#35858e">
@@ -12,9 +12,14 @@
 <meta property="og:site_name" content="סלים">
 <meta property="og:locale" content="he_IL">
 <meta property="og:title" content="סלים — השוואת מחירים בסופר: איפה הכי זול לעשות קניות">
-<meta property="og:description" content="רשימת קניות אחת, מושווית מול כל רשתות הסופר המובילות — מחירים רשמיים, מבצעים ודמי משלוח. חינם ובלי הרשמה.">
+<meta property="og:description" content="רשימת קניות אחת, מושווית מול רשתות הסופר המובילות — מחירים רשמיים, מבצעים ודמי משלוח. חינם ובלי הרשמה.">
 <meta property="og:url" content="https://slim-super.com/">
-<meta name="twitter:card" content="summary">
+<meta property="og:image" content="https://slim-super.com/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="ליםSlim — השוואת מחירי סל קניות בין רשתות הסופר בישראל">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://slim-super.com/og.png">
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -28,26 +33,44 @@
       "@type": "Organization",
       "@id": "https://slim-super.com/#org",
       "name": "סלים",
-      "alternateName": "Slim",
+      "alternateName": ["ליםSlim", "Slim", "slim-super.com"],
+      "legalName": "Segolan Holdings",
       "url": "https://slim-super.com/",
-      "logo": "https://slim-super.com/favicon.svg"
+      "email": "segolen.holdings@gmail.com",
+      "logo": { "@type": "ImageObject", "url": "https://slim-super.com/logo.png", "width": 512, "height": 512 }
     },
     {
       "@type": "WebSite",
       "@id": "https://slim-super.com/#site",
       "name": "סלים",
+      "alternateName": "ליםSlim",
       "url": "https://slim-super.com/",
       "inLanguage": "he-IL",
       "publisher": { "@id": "https://slim-super.com/#org" }
     },
     {
       "@type": "WebApplication",
+      "@id": "https://slim-super.com/#app",
       "name": "סלים — השוואת מחירים בסופר",
       "url": "https://slim-super.com/",
       "applicationCategory": "ShoppingApplication",
       "operatingSystem": "Web",
+      "browserRequirements": "Requires JavaScript",
       "inLanguage": "he-IL",
-      "description": "השוואת מחירי סל קניות בין רשתות הסופר בישראל על בסיס קבצי שקיפות המחירים הרשמיים, כולל מבצעים ודמי משלוח.",
+      "isAccessibleForFree": true,
+      "description": "השוואת מחירי סל קניות בין רשתות הסופר בישראל על בסיס קבצי שקיפות המחירים הרשמיים, כולל מבצעים ודמי משלוח משוערים.",
+      "featureList": ["השוואת סל קניות שלם בין רשתות", "מבצעים ומבצעי כמות בחישוב", "דמי משלוח משוערים", "פיצול קנייה בין שתי רשתות", "סריקת קבלה לרשימה", "ייבוא מתכון לרשימה", "רשימות שמורות"],
+      "offers": { "@type": "Offer", "price": "0", "priceCurrency": "ILS" },
+      "publisher": { "@id": "https://slim-super.com/#org" }
+    },
+    {
+      "@type": "SoftwareApplication",
+      "name": "ליםSlim — העברת סל לרשתות",
+      "url": "https://chromewebstore.google.com/detail/onlfneilkoplkekognihmgcglkanajbj",
+      "applicationCategory": "BrowserApplication",
+      "operatingSystem": "Chrome",
+      "isAccessibleForFree": true,
+      "description": "תוסף לכרום שמעביר את רשימת הקניות מסלים לעגלה באתר הרשת שנבחרה, בתוך החשבון של המשתמש.",
       "offers": { "@type": "Offer", "price": "0", "priceCurrency": "ILS" },
       "publisher": { "@id": "https://slim-super.com/#org" }
     }
@@ -61,7 +84,7 @@
 
 <div id="app">
   <div class="boot-splash">
-    <svg viewBox="0 0 128 104" class="boot-logo" fill="none">
+    <svg viewBox="0 0 128 104" class="boot-logo" fill="none" aria-hidden="true">
       <path d="M46 12 L34 40" stroke="#35858e" stroke-width="6" stroke-linecap="round"/>
       <path d="M82 12 L94 40" stroke="#35858e" stroke-width="6" stroke-linecap="round"/>
       <path d="M46 12 H82" stroke="#35858e" stroke-width="6" stroke-linecap="round"/>
@@ -71,40 +94,52 @@
     </svg>
     <div class="boot-text">טוען את מחירי היום…</div>
   </div>
-</div>
 
-<noscript>
-  <div style="max-width:760px;margin:0 auto;padding:30px 24px 70px;line-height:1.7">
-    <h1 style="font-size:34px;line-height:1.2;margin:0 0 14px">סלים — השוואת מחירים בסופר</h1>
-    <p style="font-size:18px;color:#6a5e5b;margin:0 0 16px">סלים הוא כלי חינמי שבונה רשימת קניות אחת ומשווה אותה מול חנויות האונליין
-      של רשתות הסופר המובילות בישראל — כדי שתדעו איפה הכי זול להזמין את הסל שלכם.</p>
-    <p><strong>השוואת המחירים עצמה דורשת JavaScript.</strong> הפעילו JavaScript ורעננו את הדף
-      כדי לבנות רשימה ולהשוות מחירים. בינתיים אפשר לקרוא את המדריכים שלנו — הם נגישים לקריאה מלאה
-      גם בלי JavaScript.</p>
+  <!-- Static summary for readers that do not run JavaScript (most AI crawlers
+       and link previews). The app replaces #app on boot, so the one <h1> rule
+       still holds; the onboarding screen it renders carries the same facts.
+       The date, chain list and store sources are stamped from each day's data
+       by stamp_static.py in the deploy — keep the class names it matches. -->
+  <section class="boot-intro" aria-labelledby="introTitle">
+    <h1 id="introTitle">סלים — השוואת מחירי סל קניות בין רשתות הסופר</h1>
+    <p class="boot-lede">סלים הוא כלי חינמי, בלי הרשמה: בונים רשימת קניות אחת, וסלים מתמחר אותה בכל אחת מרשתות
+      הסופר המובילות בישראל — לפי קבצי המחירים הרשמיים שהרשתות מחויבות לפרסם על פי חוק, כולל מבצעים ודמי משלוח
+      משוערים — ומראה כמה הסל המלא עולה בכל רשת.</p>
 
-    <h2>מה סלים עושה</h2>
-    <ul>
-      <li>בונים רשימת קניות אחת — בחיפוש בקטלוג, בסריקת קבלה מהסופר או מקישור למתכון.</li>
-      <li>סלים מחשב את מחיר הסל המלא בכל רשת, כולל מבצעים ודמי משלוח משוערים.</li>
+    <h2>איך זה עובד</h2>
+    <ol>
+      <li>בונים רשימה — בחיפוש בקטלוג (לפי שם, ברקוד או מק"ט), בסריקת קבלה מהסופר או מקישור למתכון.</li>
+      <li>סלים מחשב את מחיר הסל בכל רשת: מחירי מדף, מבצעים ומבצעי כמות, ודמי משלוח משוערים (הערכה).</li>
       <li>אפשר לפצל את הקנייה בין שתי רשתות כשזה יוצא זול יותר.</li>
-      <li>הרשימה עוברת מוכנה לחנות האונליין של הרשת שבחרתם.</li>
-    </ul>
+      <li>הרשימה עוברת לאתר הרשת שבחרתם; עם התוסף לכרום היא נכנסת לעגלה, בתוך החשבון שלכם.</li>
+    </ol>
 
-    <h2>הרשתות שמושוות</h2>
-    <p>שופרסל, רמי לוי, ויקטורי, יינות ביתן / קרפור, יוחננוף, אושר עד, חצי חינם וטיב טעם.
-      המחירים מגיעים מקבצי שקיפות המחירים שכל רשת גדולה מחויבת לפרסם על פי חוק, ומתעדכנים מדי יום.</p>
+    <h2>מאיפה המחירים</h2>
+    <p>מקבצי שקיפות המחירים שרשתות המזון הגדולות מחויבות לפרסם מדי יום לפי
+      <a href="https://www.gov.il/he/pages/cpfta_prices_regulations" rel="noopener">חוק קידום התחרות בענף המזון</a>.
+      העדכון האחרון: <time class="data-date" datetime="2026-10-06">6 באוקטובר 2026</time>.
+      הרשתות שבעדכון: <span class="data-chains">שופרסל, רמי לוי, יינות ביתן / קרפור, יוחננוף, אושר עד</span>.
+      <span class="data-sources">המחירים של שופרסל, רמי לוי ויינות ביתן / קרפור נלקחים מחנויות האונליין שלהן; של יוחננוף ואושר עד — מסניף מייצג.</span>
+      המחיר המחייב הוא זה שבאתר הרשת או בקופה. פירוט מלא בעמוד <a href="/about/">אודות הנתונים</a>,
+      ומחירי מוצרים נפוצים לפי רשת בעמוד <a href="/prices/">מחירי היום</a>.</p>
 
-    <h2>מדריכי קניות, מחירים וחיסכון</h2>
+    <h2>מדריכי קניות וחיסכון</h2>
     <ul>
-      <li><a href="/articles/eifo-hachi-zol/">איפה הכי זול לעשות קניות?</a> — השוואת מחירים בין רשתות הסופר.</li>
+      <li><a href="/articles/eifo-hachi-zol/">איפה הכי זול לעשות קניות?</a> — למה התשובה תלויה בסל שלכם.</li>
       <li><a href="/articles/mishloach-kniyot/">משלוח קניות עד הבית</a> — דמי משלוח, מינימום הזמנה וזמני אספקה.</li>
       <li><a href="/articles/chisachon-bakniyot/">איך לחסוך בקניות בסופר</a> — 14 דרכים מעשיות.</li>
       <li><a href="/articles/shufersal-mul-rami-levy/">שופרסל מול רמי לוי</a> — איך משווים נכון.</li>
       <li><a href="/articles/reshimat-kniyot-chodshit/">רשימת קניות חודשית</a> — תבנית מלאה למשק בית.</li>
       <li><a href="/articles/mivtzaim-basuper/">מבצעים בסופר</a> — איך מזהים מבצע משתלם.</li>
     </ul>
-    <p><a href="/articles/">לכל המדריכים ←</a></p>
-  </div>
+    <p class="boot-links"><a href="/articles/">כל המדריכים</a> · <a href="/about/">אודות הנתונים</a> ·
+      <a href="/privacy.html">פרטיות</a> · <a href="/en/" hreflang="en" lang="en">English</a></p>
+  </section>
+</div>
+
+<noscript>
+  <p class="noscript-note">השוואת המחירים עצמה דורשת JavaScript — הפעילו אותו ורעננו את הדף.
+    המדריכים ועמודי המחירים נגישים לקריאה מלאה גם בלי JavaScript.</p>
 </noscript>
 
 <script src="app.js" defer></script>

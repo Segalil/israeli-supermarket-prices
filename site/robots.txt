@@ -2,8 +2,13 @@
 # Everything is public and crawlable. /data/ MUST stay allowed: the app fetches
 # products.json.gz at runtime, and Googlebot's renderer honours robots.txt for
 # subresources too — blocking it would make the crawler see a broken app.
+# One "*" group on purpose: a crawler that finds a group naming it obeys ONLY
+# that group (RFC 9309), so per-bot groups are how AI crawlers get blocked by
+# accident. Search, AI-answer and user-triggered fetchers are all welcome.
 
 User-agent: *
 Allow: /
 
 Sitemap: https://slim-super.com/sitemap.xml
+# the daily price pages (built at deploy from the day's price files)
+Sitemap: https://slim-super.com/sitemap-prices.xml

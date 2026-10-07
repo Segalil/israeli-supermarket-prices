@@ -12,6 +12,9 @@ on:
     paths:
       - "site/**"
       - "build_site_data.py"
+      - "build_static_pages.py"
+      - "stamp_static.py"
+      - "indexnow_ping.py"
       - "israeli_prices/**"
       - ".github/workflows/deploy-pages.yml"
   workflow_dispatch:
@@ -48,21 +51,39 @@ jobs:
       - name: Build site dataset from latest snapshot
         run: python build_site_data.py
 
-      # The home page's freshness is the PRICE-SNAPSHOT date, not the deploy time:
-      # if a daily scrape fails we must not tell crawlers the data changed today.
-      # Only the home entry is stamped — the guide pages keep their real dates.
-      - name: Stamp sitemap lastmod with the snapshot date
+      # Static, dated price pages for readers that do not run JavaScript (most
+      # AI crawlers): /prices/ hub, category and product pages, /en/ and
+      # sitemap-prices.xml — gitignored build output, like site/data/.
+      - name: Build static price pages
+        run: python build_static_pages.py
+
+      # The committed home page, llms.txt and the sitemap's home <lastmod> state
+      # the snapshot date, its chains and where each chain's prices come from.
+      # These follow the PRICE-SNAPSHOT date, not the deploy time: if a daily
+      # scrape fails we must not tell crawlers the data changed today. The guide
+      # pages keep their real dates. Patterns live in stamp_static.py.
+      - name: Stamp static pages with the snapshot's date and chains
+        run: python stamp_static.py
+
+      # What a crawler that does not run JavaScript gets must be right BEFORE it
+      # ships: the stamped facts, the generated pages, and no GitHub mention.
+      - name: Check the static output
         run: |
           python - <<'PY'
-          import gzip, json, pathlib, re
-          date = json.loads(gzip.open('site/data/products.json.gz', 'rt', encoding='utf-8').read())['date']
-          path = pathlib.Path('site/sitemap.xml')
-          xml, n = re.subn(r'(<loc>https://slim-super\.com/</loc>\s*<lastmod>)[^<]+',
-                           lambda m: m.group(1) + date, path.read_text(encoding='utf-8'), count=1)
-          if n != 1:
-              raise SystemExit('sitemap.xml: home <lastmod> not found — was the file reformatted?')
-          path.write_text(xml, encoding='utf-8')
-          print('sitemap home lastmod ->', date)
+          import glob, gzip, json, re, sys
+          data = json.load(gzip.open('site/data/products.json.gz', 'rt', encoding='utf-8'))
+          home = open('site/index.html', encoding='utf-8').read()
+          llms = open('site/llms.txt', encoding='utf-8').read()
+          errs = []
+          if f'datetime="{data["date"]}"' not in home: errs.append('home page date not stamped')
+          if f'- Latest data update: {data["date"]}' not in llms: errs.append('llms.txt date not stamped')
+          for need in ('site/prices/index.html', 'site/en/index.html', 'site/sitemap-prices.xml', 'site/404.html'):
+              if not glob.glob(need): errs.append(f'missing {need}')
+          for path in glob.glob('site/**/*.html', recursive=True) + ['site/llms.txt']:
+              if re.search(r'github|open[ -]source|קוד פתוח', open(path, encoding='utf-8').read(), re.I):
+                  errs.append(f'{path} mentions GitHub/open source')
+          if errs: sys.exit('static output check failed:\n  ' + '\n  '.join(errs[:20]))
+          print('static output OK:', data['date'], len(glob.glob('site/prices/p/*/index.html')), 'product pages')
           PY
 
       # GitHub Pages serves max-age=600 and its headers aren't configurable —
@@ -89,3 +110,23 @@ jobs:
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
+
+      # Tell IndexNow engines (Bing → Copilot and ChatGPT search; Yandex, Naver,
+      # Seznam, Yep) which pages changed since yesterday. Google reads the
+      # sitemaps instead. Informational: a failed ping must not fail the deploy.
+      - name: Ping IndexNow with the changed URLs
+        continue-on-error: true
+        run: python indexnow_ping.py --since "$(date -u -d '1 day ago' +%F)"
+
+      # The live site as an AI crawler sees it: no JavaScript, an AI user agent.
+      # Pages caches up to 10 minutes, so only the structure is asserted here.
+      - name: Smoke-test the live site as an AI crawler
+        continue-on-error: true
+        run: |
+          UA='Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko); compatible; OAI-SearchBot/1.4; +https://openai.com/searchbot'
+          for path in / /llms.txt /about/ /prices/ /en/; do
+            code=$(curl -s -o /tmp/page -w '%{http_code}' -A "$UA" "https://slim-super.com$path")
+            echo "$path -> $code"
+            [ "$code" = 200 ] || exit 1
+          done
+          curl -s -A "$UA" https://slim-super.com/ | grep -q 'class="boot-intro"' || { echo 'home has no static summary'; exit 1; }

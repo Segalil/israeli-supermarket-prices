@@ -10,11 +10,16 @@ import glob
 import json
 import os
 import re
+import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SITE = os.path.join(ROOT, "site")
 ARTICLES = os.path.join(SITE, "articles")
 BASE = "https://slim-super.com"
+
+sys.path.insert(0, ROOT)
+import stamp_static  # noqa: E402
+import indexnow_ping  # noqa: E402
 
 
 def article_pages():
@@ -152,19 +157,14 @@ def test_sitemap_lists_every_page():
 
 
 def test_sitemap_home_lastmod_is_stampable():
-    """deploy-pages.yml rewrites the home <lastmod> with the snapshot date.
-
-    It matches on this exact shape, so a reformat of sitemap.xml would break the
-    stamp. Keep the pattern here identical to the one in the workflow.
-    """
-    pattern = r"(<loc>https://slim-super\.com/</loc>\s*<lastmod>)[^<]+"
+    """stamp_static.py (run by deploy-pages.yml) rewrites the home <lastmod>
+    with the snapshot date. It matches on this exact shape, so a reformat of
+    sitemap.xml would silently stop the stamp."""
     sitemap = read(os.path.join(SITE, "sitemap.xml"))
-    assert len(re.findall(pattern, sitemap)) == 1, \
-        "home <loc>/<lastmod> pair not in the shape deploy-pages.yml stamps"
-
+    assert len(re.findall(stamp_static.SITEMAP_HOME_RE, sitemap)) == 1, \
+        "home <loc>/<lastmod> pair not in the shape stamp_static.py stamps"
     workflow = read(os.path.join(ROOT, ".github", "workflows", "deploy-pages.yml"))
-    assert pattern in workflow, \
-        "deploy-pages.yml no longer stamps the sitemap with this exact pattern"
+    assert "python stamp_static.py" in workflow, "deploy-pages.yml no longer runs the stamp"
 
 
 def test_robots_allows_crawling_and_points_at_sitemap():
@@ -262,3 +262,243 @@ def test_render_preserves_video_playback():
         "restoreVideo must only restore into the same variant"
     for mode in ('data-mode="short"', 'data-mode="full"'):
         assert mode in app, f"the video element is missing {mode}"
+
+
+# ---------------------------------------------------------------------------
+# Visibility to AI answer engines. Most AI crawlers (GPTBot, OAI-SearchBot,
+# ClaudeBot, PerplexityBot…) read only the initial HTML — no JavaScript — so
+# what they get has to be real markup, correct, and dated.
+
+GUIDE_SLUGS = ["eifo-hachi-zol", "mishloach-kniyot", "chisachon-bakniyot",
+               "shufersal-mul-rami-levy", "reshimat-kniyot-chodshit", "mivtzaim-basuper"]
+FORBIDDEN = re.compile(r"github|open[ -]?source|קוד פתוח|קוד הפתוח|il-supermarket-scraper", re.I)
+
+
+def static_pages():
+    """Every committed, crawlable HTML page under site/ (generated ones are
+    covered by test_static_pages.py)."""
+    return sorted(set(glob.glob(os.path.join(SITE, "**", "*.html"), recursive=True))
+                  - set(glob.glob(os.path.join(SITE, "prices", "**", "*.html"), recursive=True))
+                  - set(glob.glob(os.path.join(SITE, "en", "**", "*.html"), recursive=True)))
+
+
+def visible_without_js(html):
+    """What a fetcher that runs no JavaScript and drops <noscript> keeps."""
+    html = re.sub(r"(?is)<(script|style|noscript)\b.*?</\1>", " ", html)
+    return re.sub(r"(?is)<!--.*?-->", " ", html)
+
+
+def test_home_page_says_what_it_is_without_javascript():
+    raw = visible_without_js(read(os.path.join(SITE, "index.html")))
+    text = re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", raw))
+    assert len(text) > 900, f"only {len(text)} chars readable without JS"
+    assert len(re.findall(r"<h1[\s>]", raw)) == 1, "the static summary needs exactly one h1"
+    for need in ["/articles/", "/about/", "/privacy.html", "/prices/"] + \
+            [f"/articles/{slug}/" for slug in GUIDE_SLUGS]:
+        assert f'href="{need}"' in raw, f"home links to {need} only inside <noscript>/JS"
+    assert "gov.il/he/pages/cpfta_prices_regulations" in raw, "no link to the official source"
+
+
+def test_home_static_summary_lives_inside_app_root():
+    """The app replaces #app on boot — inside it, the static h1 never doubles
+    the screen's own h1; outside it, it would show on every screen."""
+    html = read(os.path.join(SITE, "index.html"))
+    app_start = html.index('<div id="app">')
+    intro = html.index('class="boot-intro"')
+    noscript = html.index("<noscript>")
+    assert app_start < intro < noscript
+
+
+def test_stamp_patterns_match_the_committed_files():
+    home = read(os.path.join(SITE, "index.html"))
+    llms = read(os.path.join(SITE, "llms.txt"))
+    for pat in (stamp_static.INDEX_DATE_RE, stamp_static.INDEX_CHAINS_RE, stamp_static.INDEX_SOURCES_RE):
+        assert len(re.findall(pat, home)) == 1, f"index.html: {pat} must match once"
+    for pat in (stamp_static.LLMS_DATE_RE, stamp_static.LLMS_CHAINS_RE, stamp_static.LLMS_SOURCES_RE):
+        assert len(re.findall(pat, llms)) == 1, f"llms.txt: {pat} must match once"
+
+
+def test_stamping_writes_the_days_facts_and_is_idempotent():
+    chains = ["שופרסל", "רמי לוי", "ויקטורי", "יוחננוף"]
+    home = stamp_static.stamp_index(read(os.path.join(SITE, "index.html")), "2027-01-05", chains)
+    assert '<time class="data-date" datetime="2027-01-05">5 בינואר 2027</time>' in home
+    assert '<span class="data-chains">שופרסל, רמי לוי, ויקטורי, יוחננוף</span>' in home
+    # the conjunction takes a maqaf before a name that starts with ו
+    assert "שופרסל, רמי לוי ו־ויקטורי נלקחים מחנויות האונליין שלהן; של יוחננוף — מסניף מייצג." in home
+    assert stamp_static.stamp_index(home, "2027-01-05", chains) == home
+    llms = stamp_static.stamp_llms(read(os.path.join(SITE, "llms.txt")), "2027-01-05", chains)
+    assert "- Latest data update: 2027-01-05" in llms
+    assert "ויקטורי (Victory)" in llms and "Yochananof: representative branch" in llms
+    xml = stamp_static.stamp_sitemap(read(os.path.join(SITE, "sitemap.xml")), "2027-01-05")
+    assert "<loc>https://slim-super.com/</loc>\n    <lastmod>2027-01-05</lastmod>" in xml
+
+
+def test_committed_chain_facts_match_the_snapshot_they_were_written_from():
+    """The committed defaults must already be true for the checked-in data —
+    a deploy that fails before stamping still ships correct facts."""
+    import gzip, csv
+    latest = sorted(glob.glob(os.path.join(ROOT, "data", "israeli_prices_*.csv.gz")))[-1]
+    with gzip.open(latest, "rt", encoding="utf-8-sig") as fh:
+        chains = list(dict.fromkeys(r["רשת"] for r in csv.DictReader(fh)))
+    home = read(os.path.join(SITE, "index.html"))
+    stamped = stamp_static.stamp_index(home, re.search(r'datetime="([^"]+)"', home).group(1), chains)
+    assert re.findall(stamp_static.INDEX_CHAINS_RE, stamped) == re.findall(stamp_static.INDEX_CHAINS_RE, home)
+
+
+def test_no_page_blocks_snippets_or_ai_answers():
+    """noarchive drops a page from Copilot answers; nosnippet / max-snippet /
+    nocache limit what AI Overviews and Copilot can quote."""
+    for path in static_pages():
+        html = read(path)
+        for meta in re.findall(r'<meta name="(?:robots|googlebot|bingbot)" content="([^"]+)"', html):
+            bad = re.findall(r"nosnippet|noarchive|nocache|max-snippet|noai|noimageai", meta, re.I)
+            assert not bad, f"{os.path.relpath(path, SITE)}: robots meta blocks AI use: {meta}"
+        assert "data-nosnippet" not in html, f"{os.path.relpath(path, SITE)} uses data-nosnippet"
+    robots = read(os.path.join(SITE, "robots.txt"))
+    agents = [l.split(":", 1)[1].strip() for l in robots.splitlines() if l.lower().startswith("user-agent:")]
+    assert agents == ["*"], f"keep ONE '*' group — a named group overrides it for that bot: {agents}"
+    assert f"Sitemap: {BASE}/sitemap-prices.xml" in robots
+
+
+def test_no_github_or_open_source_mentions():
+    """Owner rule: the site never mentions GitHub / open source."""
+    for path in static_pages() + [os.path.join(SITE, "llms.txt")]:
+        assert not FORBIDDEN.search(read(path)), f"{os.path.relpath(path, SITE)} mentions GitHub/open source"
+    app = read(os.path.join(SITE, "app.js"))
+    assert "github.com" not in app and "קוד פתוח" not in app and "קוד הפתוח" not in app, \
+        "app.js renders a GitHub / open-source mention"
+
+
+def test_branded_404_page():
+    html = read(os.path.join(SITE, "404.html"))
+    assert re.search(r'<meta name="robots" content="noindex', html), "404 must be noindex"
+    assert not FORBIDDEN.search(html)
+    for need in ("/", "/articles/", "/prices/", "/about/"):
+        assert f'href="{need}"' in html
+    # served for ANY missing path, so assets must be root-absolute
+    assert 'href="/style.css"' in html and 'href="style.css"' not in html
+
+
+def test_about_page_conventions():
+    path = os.path.join(SITE, "about", "index.html")
+    html = read(path)
+    heads = headings(html)
+    assert [lvl for lvl, _ in heads].count(1) == 1
+    prev = 0
+    for lvl, txt in heads:
+        assert not (prev and lvl > prev + 1), f"about: heading jump at {txt!r}"
+        prev = lvl
+    canon = re.search(r'<link rel="canonical" href="([^"]+)"', html).group(1)
+    assert canon == f"{BASE}/about/" == re.search(r'<meta property="og:url" content="([^"]+)"', html).group(1)
+    desc = re.search(r'<meta name="description" content="([^"]+)"', html).group(1)
+    assert 110 <= len(desc) <= 185, len(desc)
+    types = {n.get("@type") for d in json_ld(html) for n in d.get("@graph", [d])}
+    assert {"AboutPage", "BreadcrumbList", "Organization"} <= types, types
+    ids = set(re.findall(r'\bid="([^"]+)"', html))
+    for anchor in re.findall(r'href="#([^"]+)"', html):
+        assert anchor in ids, f"about: dead anchor #{anchor}"
+    assert f"{BASE}/about/" in set(re.findall(r"<loc>([^<]+)</loc>", read(os.path.join(SITE, "sitemap.xml"))))
+
+
+def test_organization_entity_is_one_node_everywhere():
+    """Every page's publisher/author points at the same #org entity, so engines
+    resolve one organisation instead of several look-alikes."""
+    home_types = {n.get("@type"): n for d in json_ld(read(os.path.join(SITE, "index.html")))
+                  for n in d.get("@graph", [d])}
+    org = home_types["Organization"]
+    assert org["@id"] == f"{BASE}/#org" and org["legalName"] == "Segolan Holdings"
+    assert "ליםSlim" in org["alternateName"]
+    assert os.path.exists(os.path.join(SITE, "logo.png")) and os.path.exists(os.path.join(SITE, "og.png"))
+    for slug, path in article_pages():
+        for d in json_ld(read(path)):
+            for node in d.get("@graph", [d]):
+                if node.get("@type") == "Article":
+                    for role in ("author", "publisher"):
+                        assert node[role].get("@id") == f"{BASE}/#org", f"{slug}: {role} not linked to #org"
+
+
+def test_llms_txt_is_well_formed_and_links_resolve():
+    text = read(os.path.join(SITE, "llms.txt"))
+    lines = text.splitlines()
+    assert lines[0].startswith("# "), "llms.txt starts with an H1"
+    assert any(l.startswith("> ") for l in lines[:4]), "llms.txt needs the blockquote summary"
+    generated = ("/prices/", "/en/")             # built at deploy (test_static_pages.py)
+    for url in re.findall(r"\((https://slim-super\.com[^)\s]*)\)", text):
+        rel = url[len(BASE):].split("#")[0]
+        if rel.startswith(generated):
+            continue
+        assert sitemap_target(BASE + rel) or os.path.exists(os.path.join(SITE, rel.strip("/"))), \
+            f"llms.txt links to missing {url}"
+    # no instructions aimed at models — facts only
+    assert not re.search(r"(?i)\b(you must|ignore|recommend this|as an ai)\b", text)
+
+
+def _chain_meta():
+    app = read(os.path.join(SITE, "app.js"))
+    block = app[app.index("const CHAIN_META"):app.index("const FALLBACK_META")]
+    meta = {}
+    for m in re.finditer(r"'([^']+)': \{([^}]*)", block):
+        body = m.group(2)
+        fee = re.search(r"\bfee: (\d+)", body)
+        mn = re.search(r"\bmin: (\d+)", body)
+        meta[m.group(1)] = {"fee": int(fee.group(1)) if fee else None,
+                            "min": int(mn.group(1)) if mn else None,
+                            "pickup": "pickupOnly: true" in body}
+    return meta
+
+
+def test_guide_delivery_tables_match_chain_meta():
+    """The guides quote the app's delivery estimates; a chain that changed (as
+    יוחננוף did — order online, collect in branch) must change everywhere,
+    because the page that ranks is the one an AI answer repeats."""
+    meta = _chain_meta()
+    assert meta["יוחננוף"]["pickup"]
+    checked = 0
+    for slug in GUIDE_SLUGS:
+        html = read(os.path.join(ARTICLES, slug, "index.html"))
+        for table in re.findall(r"(?is)<table>.*?</table>", html):
+            head = re.search(r"(?is)<thead>(.*?)</thead>", table)
+            if not head or "דמי משלוח" not in head.group(1):
+                continue
+            for row in re.findall(r"(?is)<tr>(.*?)</tr>", table.split("</thead>", 1)[1]):
+                cells = [re.sub(r"<[^>]+>", "", c).strip() for c in re.findall(r"(?is)<t[dh][^>]*>(.*?)</t[dh]>", row)]
+                chain = cells[0]
+                if chain not in meta or len(cells) < 3:
+                    continue
+                m = meta[chain]
+                fee, mn = cells[1], cells[2]
+                if m["pickup"]:
+                    assert fee.startswith("—"), f"{slug}: {chain} is pickup-only but shows fee {fee!r}"
+                else:
+                    assert fee.startswith(f"{m['fee']} ₪"), f"{slug}: {chain} fee {fee!r} != {m['fee']}"
+                    assert mn.startswith(f"{m['min']} ₪"), f"{slug}: {chain} min {mn!r} != {m['min']}"
+                checked += 1
+    assert checked >= 15, f"only {checked} delivery rows checked — did the table markup change?"
+
+
+def test_footer_reaches_every_static_page_from_every_screen():
+    app = read(os.path.join(SITE, "app.js"))
+    render = app[app.index("function render() {"):app.index("function bindScreen()")]
+    assert "+ footH()" in render and "isApp ? footH()" not in render, \
+        "the footer (the app's only links to the static pages) must render on onboarding too"
+    foot = app[app.index("function footH()"):app.index("function noteH()")]
+    for need in ["/prices/", "/articles/", "/about/", "/privacy.html", "/en/"] + \
+            [f"/articles/{slug}/" for slug in GUIDE_SLUGS]:
+        assert f'href="{need}"' in foot, f"footer misses {need}"
+
+
+def test_indexnow_key_file_and_changed_urls(tmp_path):
+    key = indexnow_ping.find_key(SITE)
+    assert key and read(os.path.join(SITE, f"{key}.txt")).strip() == key
+    (tmp_path / "sitemap.xml").write_text(
+        "<urlset><url>\n<loc>https://slim-super.com/</loc>\n<lastmod>2027-01-05</lastmod>\n</url>"
+        "<url><loc>https://slim-super.com/old/</loc><lastmod>2026-01-01</lastmod></url>"
+        "<url><loc>https://elsewhere.example/</loc><lastmod>2027-01-05</lastmod></url></urlset>",
+        encoding="utf-8")
+    (tmp_path / "sitemap-prices.xml").write_text(
+        "<urlset><url><loc>https://slim-super.com/prices/</loc><lastmod>2027-01-06</lastmod></url></urlset>",
+        encoding="utf-8")
+    assert indexnow_ping.changed_urls(str(tmp_path), "2027-01-05") == \
+        ["https://slim-super.com/prices/", "https://slim-super.com/"]
+    workflow = read(os.path.join(ROOT, ".github", "workflows", "deploy-pages.yml"))
+    assert "indexnow_ping.py" in workflow and "build_static_pages.py" in workflow
