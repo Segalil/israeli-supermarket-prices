@@ -14,6 +14,7 @@ import io
 import json
 import os
 import re
+from collections import Counter
 from datetime import datetime, timezone
 
 # Hebrew CSV headers -> internal column names.
@@ -139,6 +140,34 @@ def unit_signature(unit):
         if pattern.search(text):
             return kind, round(amount * factor, 3)
     return None
+
+
+# Where a chain's prices come from. build_price_db targets each chain's ONLINE
+# store by its id in the chain's stores file; when that file is missing or the
+# id is not found it falls back to another store — on 2026-08-22 and 09-04 the
+# Carrefour file was branch 464, not online store 055, and אושר עד moves between
+# branches 001/003/028. So "online" is a fact about the DAY's file, not about the
+# chain: store_type() checks the day's store id. Leading zeros are not
+# significant ("039" == "39"). חצי חינם's online id is not confirmed, so no
+# claim is made for it either way.
+ONLINE_STORE_IDS = {"שופרסל": "413", "רמי לוי": "39", "ויקטורי": "97",
+                    "יינות ביתן / קרפור": "55"}
+BRANCH_ONLY_CHAINS = ("יוחננוף", "אושר עד")   # no online store id in their stores files
+STORE_ONLINE, STORE_BRANCH = "online", "branch"
+
+
+def store_type(chain, store_id=None):
+    """STORE_ONLINE / STORE_BRANCH for a chain's prices on a day, or None when
+    unknown. Without a store id (datasets built before ids were recorded) a
+    chain with a known online store is assumed to have used it."""
+    if chain in BRANCH_ONLY_CHAINS:
+        return STORE_BRANCH
+    want = ONLINE_STORE_IDS.get(chain)
+    if want is None:
+        return None
+    if store_id is None or str(store_id).strip() == "":
+        return STORE_ONLINE
+    return STORE_ONLINE if str(store_id).strip().lstrip("0") == want else STORE_BRANCH
 
 
 def barcode_key(barcode):
@@ -560,6 +589,7 @@ def build_site_data(rows, date="", promo_rows=None):
     """
     chains = []          # first-appearance order (snapshot is written per-chain)
     products = {}        # key -> {"n": name, "u": unit, "b": brand, "p": {chain: price}}
+    store_ids = {}       # chain -> Counter of store ids (one file per chain per day)
     for r in rows:
         chain = r.get("chain", "")
         name = strip_chain_name(r.get("item_name", ""), chain)
@@ -568,6 +598,9 @@ def build_site_data(rows, date="", promo_rows=None):
             continue
         if chain not in chains:
             chains.append(chain)
+        sid = (r.get("store_id") or "").strip()
+        if sid:
+            store_ids.setdefault(chain, Counter())[sid] += 1
         key = product_key(r.get("barcode"), chain, name)
         prod = products.setdefault(key, {"n": name, "u": "", "b": "", "p": {}})
         if len(name) > len(prod["n"]):
@@ -616,6 +649,8 @@ def build_site_data(rows, date="", promo_rows=None):
         "date": date,
         "generated": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "chains": chains,
+        # the store each chain's file came from that day (see store_type)
+        "stores": {c: store_ids[c].most_common(1)[0][0] for c in chains if c in store_ids},
         "categories": CATEGORIES,
         "products": out_products,
     }

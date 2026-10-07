@@ -23,11 +23,10 @@ import os
 import re
 import sys
 
-# Where each chain's prices come from — ONE map, shared with the price pages.
-# The online store is targeted by store id in build_price_db.py; יוחננוף and
-# אושר עד have no online-store id in their stores files, so a representative
-# branch is used (CLAUDE.md roadmap item 2).
-from israeli_prices.static_pages import BRANCH_STORE, ONLINE_STORE  # noqa: E402
+# Where each chain's prices come from is a fact about the DAY's file (a chain
+# can fall back to a branch when its online store's file is missing), so it is
+# read from products.json's "stores" through the one rule the price pages use.
+from israeli_prices.basket import STORE_BRANCH, STORE_ONLINE, store_type  # noqa: E402
 CHAIN_EN = {
     "שופרסל": "Shufersal", "רמי לוי": "Rami Levy", "ויקטורי": "Victory",
     "יינות ביתן / קרפור": "Yeinot Bitan / Carrefour", "יוחננוף": "Yochananof",
@@ -62,9 +61,11 @@ def he_join(names):
     return ", ".join(names[:-1]) + (" ו־" if last.startswith("ו") else " ו") + last
 
 
-def sources_he(chains):
-    online = [c for c in chains if c in ONLINE_STORE]
-    branch = [c for c in chains if c in BRANCH_STORE]
+def sources_he(chains, stores=None):
+    stores = stores or {}
+    kinds = {c: store_type(c, stores.get(c)) for c in chains}
+    online = [c for c in chains if kinds[c] == STORE_ONLINE]
+    branch = [c for c in chains if kinds[c] == STORE_BRANCH]
     parts = []
     if online:
         parts.append(f"המחירים של {he_join(online)} נלקחים מחנויות האונליין שלהן")
@@ -74,11 +75,13 @@ def sources_he(chains):
     return ("; ".join(parts) + ".") if parts else ""
 
 
-def sources_en(chains):
+def sources_en(chains, stores=None):
+    stores = stores or {}
     out = []
     for c in chains:
-        kind = ("online store" if c in ONLINE_STORE
-                else "representative branch" if c in BRANCH_STORE else "store file")
+        t = store_type(c, stores.get(c))
+        kind = ("online store" if t == STORE_ONLINE
+                else "representative branch" if t == STORE_BRANCH else "store file")
         out.append(f"{CHAIN_EN.get(c, c)}: {kind}")
     return "; ".join(out)
 
@@ -90,20 +93,20 @@ def _sub_once(pattern, repl, text, what):
     return new
 
 
-def stamp_index(html, date, chains):
+def stamp_index(html, date, chains, stores=None):
     html = _sub_once(INDEX_DATE_RE, f'<time class="data-date" datetime="{date}">{he_date(date)}</time>',
                      html, "index.html date")
     html = _sub_once(INDEX_CHAINS_RE, f'<span class="data-chains">{", ".join(chains)}</span>',
                      html, "index.html chains")
-    return _sub_once(INDEX_SOURCES_RE, f'<span class="data-sources">{sources_he(chains)}</span>',
+    return _sub_once(INDEX_SOURCES_RE, f'<span class="data-sources">{sources_he(chains, stores)}</span>',
                      html, "index.html sources")
 
 
-def stamp_llms(text, date, chains):
+def stamp_llms(text, date, chains, stores=None):
     text = _sub_once(LLMS_DATE_RE, f"- Latest data update: {date}", text, "llms.txt date")
     names = ", ".join(f"{c} ({CHAIN_EN[c]})" if c in CHAIN_EN else c for c in chains)
     text = _sub_once(LLMS_CHAINS_RE, f"- Chains in the latest update: {names}", text, "llms.txt chains")
-    return _sub_once(LLMS_SOURCES_RE, f"- Where each chain's prices come from: {sources_en(chains)}",
+    return _sub_once(LLMS_SOURCES_RE, f"- Where each chain's prices come from: {sources_en(chains, stores)}",
                      text, "llms.txt sources")
 
 
@@ -128,10 +131,11 @@ def main():
     with gzip.open(args.products, "rt", encoding="utf-8") as fh:
         data = json.load(fh)
     date, chains = data.get("date") or "", data.get("chains") or []
+    stores = data.get("stores") or {}
     if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", date) or not chains:
         sys.exit(f"stamp: dataset has no usable date/chains (date={date!r}, chains={chains})")
-    _rw(os.path.join(args.site, "index.html"), lambda h: stamp_index(h, date, chains))
-    _rw(os.path.join(args.site, "llms.txt"), lambda t: stamp_llms(t, date, chains))
+    _rw(os.path.join(args.site, "index.html"), lambda h: stamp_index(h, date, chains, stores))
+    _rw(os.path.join(args.site, "llms.txt"), lambda t: stamp_llms(t, date, chains, stores))
     _rw(os.path.join(args.site, "sitemap.xml"), lambda x: stamp_sitemap(x, date))
     print(f"stamped {date} · {', '.join(chains)}")
 
