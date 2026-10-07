@@ -122,8 +122,11 @@ def test_page_set_and_counts(site, pages, model):
     stats = site["stats"]
     assert "/prices/" in pages and "/en/" in pages
     cats = [u for u in pages if u.startswith("/prices/category/")]
-    assert 1 <= len(cats) <= 10
-    assert set(cats) <= {f"/prices/category/{s}/" for s in sp.CATEGORY_SLUGS.values()}
+    assert 1 <= len(cats) <= 11
+    assert set(cats) <= {f"/prices/category/{s}/" for s in sp.CATEGORY_SLUGS.values()} | {sp.OTHER_URL}
+    assert sorted(cats) == sorted(url for _n, url, _i, _o in model.listings)
+    assert stats["category_pages"] == len(cats) - (sp.OTHER_URL in cats)
+    assert stats["files"] == len(pages) + 1                  # + the sitemap
     prods = product_pages(pages)
     assert len(prods) == stats["product_pages"] == len(model.products)
     # with the default thresholds the checked-in history yields ~1.5k pages
@@ -254,10 +257,9 @@ def test_chains_in_fixed_order(pages, model):
 
 
 def test_category_tables_sorted_by_name_not_price(pages, model):
-    for idx, items in model.by_cat.items():
-        if idx not in sp.CATEGORY_SLUGS:
-            continue
-        html = pages[f"/prices/category/{sp.CATEGORY_SLUGS[idx]}/"]
+    assert model.listings
+    for _name, url, items, _other in model.listings:
+        html = pages[url]
         keys = re.findall(r'<th scope="row"><a href="/prices/p/(\d+)/">', html)
         assert keys == [pr.key for pr in items]
         names = [model.products[k].name for k in keys]
@@ -296,9 +298,11 @@ def test_every_page_carries_date_source_about_and_no_affiliation(pages, model):
             assert f'href="{href}"' in html, (url, href)
         if url == "/en/":
             assert sp.NO_AFFILIATION_EN in html
-            assert "shelf prices" in html and "before club and coupon promotions" in html
+            assert "shelf prices" in html
+            assert "before any promotion (including club and coupon offers), without delivery" in html
         else:
-            assert "מחירי מדף" in html and "לפני מבצעי מועדון וקופון ובלי דמי משלוח" in html
+            assert "מחירי מדף" in html
+            assert "לפני כל המבצעים (גם מבצעי מועדון וקופון) ובלי דמי משלוח" in html
             assert "המחיר המחייב הוא המחיר אצל הרשת" in html
 
 
@@ -321,8 +325,8 @@ def test_no_scripts_images_or_foreign_requests(site):
 def test_tables_are_accessible(pages):
     for url, html in pages.items():
         for table in re.findall(r"(?s)<table\b.*?</table>", html):
-            assert "<caption>" in table, url
-            assert re.search(r'<th scope="col">', table), url
+            assert re.search(r"<caption[ >]", table), url
+            assert re.search(r'<th scope="col"[ >]', table), url
             assert not re.search(r"<th(?! scope=\"(?:col|row)\")[ >]", table), url
 
 
@@ -471,8 +475,7 @@ def test_noindex_switch(model, tmp_path, monkeypatch):
     out = str(tmp_path / "site")
     sp.write_pages(model, out)                       # noindex=None -> the constant
     files = glob.glob(os.path.join(out, "**", "index.html"), recursive=True)
-    n_cat = sum(1 for idx in sp.CATEGORY_SLUGS if model.by_cat.get(idx))
-    assert len(files) == len(model.products) + n_cat + 2
+    assert len(files) == len(model.products) + len(model.listings) + 2
     for path in files:
         assert '<meta name="robots" content="noindex, follow">' in read(path), path
     root = ET.parse(os.path.join(out, "sitemap-prices.xml")).getroot()
@@ -700,9 +703,10 @@ def test_visible_change_line_matches_shelf_prices(pages, model):
             day = sp.clean_prices(hist["prices"][d].get(key, {}))
             for c in shown:
                 if c in day:
-                    if c in last and last[c] != day[c]:
+                    k = (c, hist["stores"][d].get(c, ""))     # per chain AND store
+                    if k in last and last[k] != day[c]:
                         newest = d
-                    last[c] = day[c]
+                    last[k] = day[c]
         m = re.search(r'שינוי אחרון במחירים המוצגים: <time datetime="([\d-]+)"', html)
         visible = m.group(1) if m else (model.date if "השתנו בעדכון הזה" in html else None)
         assert visible == newest, (url, visible, newest)
@@ -713,13 +717,17 @@ def test_history_counts_days_present_in_the_raw_file(pages, model):
     hist = model.hist
     start = sp._hist_start(model.date)
     window = [d for d in hist["dates"] if start <= d <= model.date]
+    today_store = {}                  # today's store; for a chain absent today, its latest
+    for d in window:
+        today_store.update(hist["stores"][d])
     dash = 0
     for url, html in product_pages(pages).items():
         key = url.split("/")[3]
         present = {}
         for d in window:
             for c in hist["prices"][d].get(key, {}):
-                present[c] = present.get(c, 0) + 1
+                if hist["stores"][d].get(c, "") == today_store.get(c, ""):
+                    present[c] = present.get(c, 0) + 1
         m = re.search(r'(?s)<h2 id="history">.*?<tbody>(.*?)</tbody>', html)
         rows = re.findall(r'<tr><th scope="row">(.*?)</th><td>(.*?)</td><td>(\d+)</td></tr>',
                           m.group(1)) if m else []
@@ -838,10 +846,8 @@ def test_titles_never_end_on_a_cut_number(pages):
 # 10. category tables -------------------------------------------------------------------------
 def test_category_rows_hide_trivial_sizes_and_count_chains_in_the_file(pages, model):
     rows = 0
-    for idx, items in model.by_cat.items():
-        if idx not in sp.CATEGORY_SLUGS:
-            continue
-        html = pages[f"/prices/category/{sp.CATEGORY_SLUGS[idx]}/"]
+    for _name, url, _items, _other in model.listings:
+        html = pages[url]
         found = re.findall(r'<tr><th scope="row"><a href="/prices/p/(\d+)/">.*?</a></th>'
                            r"<td>(.*?)</td><td>(\d+)</td>", html)
         for key, size, n in found:
@@ -850,7 +856,7 @@ def test_category_rows_hide_trivial_sizes_and_count_chains_in_the_file(pages, mo
             assert unescape(size) == (sp.display_size(pr) or "—"), key
             assert int(n) == sum(1 for p in pr.prices if p is not None), key
             rows += 1
-    assert rows == sum(len(v) for k, v in model.by_cat.items() if k in sp.CATEGORY_SLUGS)
+    assert rows == len(model.products)          # every product is listed exactly once
 
 
 # 11. unknown lastmod is omitted ----------------------------------------------------------------
@@ -886,12 +892,16 @@ def test_manufacturer_is_not_presented_as_the_brand(pages, model):
 
 # 13. minor: related links, tobacco words, thresholds in text, store types ------------------------
 def test_uncategorised_pages_link_no_unrelated_products(pages, model):
-    zero = [pr for pr in model.products.values() if pr.cat not in sp.CATEGORY_SLUGS]
+    zero = [pr for pr in model.products.values() if not sp.category_url(pr.cat, model.by_cat)]
     assert zero
     for pr in zero:
-        assert 'id="related"' not in pages[pr.url()], pr.key
+        html = pages[pr.url()]
+        assert 'id="related"' not in html, pr.key
+        assert "/prices/category/" not in html.split('<nav class="art-crumbs"', 1)[1].split("</nav>")[0]
+        assert "category" not in graph_types(html)["Product"], pr.key
+        assert "קטגוריה:" not in html, pr.key
     assert any('id="related"' in pages[pr.url()] for pr in model.products.values()
-               if pr.cat in sp.CATEGORY_SLUGS)
+               if sp.category_url(pr.cat, model.by_cat))
 
 
 def test_tobacco_brand_words():
@@ -917,12 +927,17 @@ def test_thresholds_in_text_follow_the_constants(pages, monkeypatch):
     assert sp.he_count(12, False) == "12"
 
 
-def test_store_type_tuples_for_reuse():
-    assert sp.ONLINE_STORE == ("שופרסל", "רמי לוי", "יינות ביתן / קרפור", "ויקטורי", "חצי חינם")
-    assert sp.BRANCH_STORE == ("יוחננוף", "אושר עד")
-    assert set(sp.ONLINE_STORE) | set(sp.BRANCH_STORE) == set(sp.FIXED_CHAINS)
-    assert all(sp.chain_store_type(c) == sp.ONLINE for c in sp.ONLINE_STORE)
-    assert all(sp.chain_store_type(c) == sp.BRANCH for c in sp.BRANCH_STORE)
+def test_store_type_comes_from_the_days_file():
+    data = {"stores": {"יינות ביתן / קרפור": "464", "שופרסל": "413", "אושר עד": "001"}}
+    assert sp.chain_store_type("יינות ביתן / קרפור", data) == sp.BRANCH      # fallback branch
+    assert sp.chain_store_type("יינות ביתן / קרפור", {"stores": {"יינות ביתן / קרפור": "055"}}) \
+        == sp.ONLINE
+    assert sp.chain_store_type("שופרסל", data) == sp.ONLINE
+    assert sp.chain_store_type("אושר עד", data) == sp.BRANCH
+    assert sp.chain_store_type("חצי חינם", data) is None                     # unconfirmed id
+    assert sp._store_label("חצי חינם", data) == "—"
+    assert sp._store_label("יינות ביתן / קרפור", data) == "סניף"
+    assert not hasattr(sp, "STORE_TYPES")         # no chain-level constant to drift from the file
 
 
 # follow-ups from the second review ---------------------------------------------
@@ -956,3 +971,194 @@ def test_hub_change_list_agrees_with_the_pages(pages, model):
     listed = set(re.findall(r'href="/prices/p/(\d+)/"', hub.split("שמחיר המדף שלהם השתנה", 1)[1]))
     assert listed <= changed_pages, listed - changed_pages
     assert int(m.group(1).replace(",", "")) == len(changed_pages)
+
+
+# third review: orphans, store type per day, /en/ links, wording ------------------
+def internal_links(html):
+    return re.findall(r'href="(/(?:prices|en)/[^"#]*)"', html)
+
+
+def test_every_product_page_is_reachable_from_the_hub(pages, model):
+    """Breadth-first crawl over the generated pages from /prices/: every
+    product page has a path of links (not only the sitemap)."""
+    seen, queue = {"/prices/"}, ["/prices/"]
+    while queue:
+        url = queue.pop(0)
+        for link in internal_links(pages.get(url, "")):
+            if link in pages and link not in seen:
+                seen.add(link)
+                queue.append(link)
+    unreached = [u for u in product_pages(pages) if u not in seen]
+    assert not unreached, (len(unreached), unreached[:5])
+    assert sp.OTHER_URL in seen and "/en/" in seen
+
+
+def test_other_listing_holds_every_product_without_a_category_page(site, pages, model):
+    other = pages[sp.OTHER_URL]
+    keys = re.findall(r'<th scope="row"><a href="/prices/p/(\d+)/">', other)
+    expect = sorted((pr for pr in model.products.values()
+                     if not sp.category_url(pr.cat, model.by_cat)), key=sp._sort_key)
+    assert keys == [pr.key for pr in expect] and keys
+    assert set(keys) >= {pr.key for pr in model.by_cat.get(0, [])}
+    assert "<h1>" + sp.OTHER_NAME in other
+    assert BASE + sp.OTHER_URL in dict(sitemap_entries(site))
+    assert site["stats"]["other_listing"] == len(keys)
+    hub = pages["/prices/"]
+    assert (f'<li><a href="{sp.OTHER_URL}">{sp.OTHER_NAME}</a> — '
+            f'<span dir="ltr">{sp.fmt_int(len(keys))}</span> מוצרים</li>') in hub
+    assert "ללא קטגוריה" not in hub
+    # no totals and no ranking on the listing either
+    assert "סכום" not in other and "סל של" not in other
+    # category 0 stays unmapped
+    assert 0 not in sp.CATEGORY_SLUGS
+
+
+def test_no_category_page_below_the_minimum(pages, model):
+    for idx, slug in sp.CATEGORY_SLUGS.items():
+        n = len(model.by_cat.get(idx, []))
+        url = f"/prices/category/{slug}/"
+        assert (url in pages) == (n >= sp.CATEGORY_PAGE_MIN), (slug, n)
+        if 0 < n < sp.CATEGORY_PAGE_MIN:
+            for pr in model.by_cat[idx]:
+                html = pages[pr.url()]
+                assert url not in html, pr.key           # no breadcrumb / lede link to it
+                assert f'href="/prices/p/{pr.key}/"' in pages[sp.OTHER_URL]
+    # the rule itself, on a synthetic catalogue
+    def prs(n, cat):
+        out = []
+        for i in range(n):
+            pr = sp.Product()
+            pr.key, pr.name, pr.unit, pr.cat = f"{cat}{i:03d}", f"מוצר {i}", "", cat
+            out.append(pr)
+        return out
+    by_cat = {0: prs(2, 0), 1: prs(sp.CATEGORY_PAGE_MIN - 1, 1), 2: prs(sp.CATEGORY_PAGE_MIN, 2)}
+    assert sp.category_url(1, by_cat) is None and sp.category_url(0, by_cat) is None
+    assert sp.category_url(2, by_cat) == "/prices/category/dairy/"
+    assert len(sp.other_items(by_cat)) == 2 + sp.CATEGORY_PAGE_MIN - 1
+
+
+def _store_history(stores, prices):
+    days = [f"2026-01-0{i}" for i in range(1, len(prices) + 1)]
+    return {"dates": days, "promos": {d: None for d in days},
+            "prices": {d: {"K": p} for d, p in zip(days, prices)},
+            "stores": {d: s for d, s in zip(days, stores)}}
+
+
+def test_store_switch_is_not_a_price_change(monkeypatch):
+    """055 -> 464 (a fallback branch, another price) -> 055 at the old price:
+    no change date, the 464 day stays out of the 30-day range, and a page
+    built on a 464 day labels the chain a branch."""
+    monkeypatch.setattr(sp, "barcode_key", lambda b: b)
+    c = "יינות ביתן / קרפור"
+    chains = ["שופרסל", c]
+    stores = [{"שופרסל": "413", c: "055"}, {"שופרסל": "413", c: "464"},
+              {"שופרסל": "413", c: "055"}]
+    prices = [{"שופרסל": 10.0, c: 10.5}, {"שופרסל": 10.0, c: 11.9}, {"שופרסל": 10.0, c: 10.5}]
+    hist = _store_history(stores, prices)
+    pr = _synthetic_product()
+    pr.prices = pr.shown = [10.0, 10.5]
+    pr.promos = [None, None]
+    changes, prev = sp.attach_history({"K": pr}, chains, hist, "2026-01-03")
+    assert pr.price_changed is None and pr.content_modified is None
+    assert changes == [] and prev == "2026-01-02"
+    assert pr.prev_known == {"שופרסל": 10.0, c: 10.5}         # 055's own last price
+    assert dict((ch, (lo, hi, n)) for ch, lo, hi, n in pr.history)[c] == (10.5, 10.5, 2)
+    # the same series keyed by chain alone WOULD report a change on the return
+    assert sp.last_change([(d, {ch: v[ch] for ch in v}) for d, v in
+                           zip(hist["dates"], prices)]) == "2026-01-03"
+    # a real change at 055 is still reported, against 055's own last value
+    hist["prices"]["2026-01-03"]["K"][c] = 9.9
+    pr2 = _synthetic_product()
+    pr2.prices = pr2.shown = [10.0, 9.9]
+    pr2.promos = [None, None]
+    changes, _prev = sp.attach_history({"K": pr2}, chains, hist, "2026-01-03")
+    assert pr2.price_changed == "2026-01-03"
+    assert changes == [("K", [(c, 10.5, 9.9)])]
+    # on the 464 day the page labels the chain by the day's store
+    data = {"date": "2026-01-02", "chains": chains, "products": [], "stores": stores[1]}
+    pr.shown = [10.0, 11.9]
+    html = sp.render_product(pr, chains, data, {}, False)
+    row = re.search(r'<tr><th scope="row">%s</th><td>([^<]*)</td>' % re.escape(c), html)
+    assert row.group(1) == "סניף"
+    assert "באותה חנות כמו היום" in html
+
+
+def test_last_change_with_store_keys():
+    lc = sp.last_change
+    a55, a464 = ("a", "055"), ("a", "464")
+    assert lc([("d1", {a55: 1.0}), ("d2", {a464: 2.0}), ("d3", {a55: 1.0})]) is None
+    assert lc([("d1", {a55: 1.0}), ("d2", {a464: 2.0}), ("d3", {a464: 2.5}),
+               ("d4", {a55: 1.0})]) == "d3"
+
+
+def test_store_type_labels_follow_todays_file(pages, model):
+    stores = model.data.get("stores") or {}
+    hub = pages["/prices/"]
+    table = re.search(r'(?s)<h2 id="chains">.*?<tbody>(.*?)</tbody>', hub).group(1)
+    for chain, label in re.findall(r'<tr><th scope="row">(.*?)</th><td>(.*?)</td>', table):
+        chain = unescape(chain)
+        t = sp.store_type(chain, stores.get(chain))
+        assert label == (sp.STORE_TYPE_HE_LONG[t] if t else "—"), chain
+    some = next(iter(product_pages(pages).values()))
+    for chain, _p, _cell in price_rows(some):
+        t = sp.store_type(chain, stores.get(chain))
+        label = re.search(r'<tr><th scope="row">%s</th><td>([^<]*)</td>' % re.escape(chain),
+                          some.replace("&quot;", '"')).group(1)
+        assert label == (sp.STORE_TYPE_HE[t] if t else "—"), chain
+    en = pages["/en/"]
+    for c in model.chains:
+        t = sp.store_type(c, stores.get(c))
+        assert sp.STORE_TYPE_EN.get(t, "—") in en
+
+
+def test_en_links_to_hebrew_pages_are_marked(pages):
+    en = pages["/en/"]
+    assert "across Israel's leading supermarket chains" in en
+    assert "online stores of" not in en
+    # links inside the price table and the breadcrumb trail carry hreflang only
+    tables = " ".join(re.findall(r"(?s)<table\b.*?</table>", en)
+                      + re.findall(r'(?s)<nav class="art-crumbs".*?</nav>', en))
+    for m in re.finditer(r'(?s)<a ([^>]*)>(.*?)</a>', en):
+        attrs, text = m.group(1), re.sub(r"<[^>]+>", "", m.group(2))
+        href = re.search(r'href="([^"]+)"', attrs).group(1)
+        if href.startswith(("#", "/en/", "http")):
+            if href == sp.GOV_URL:
+                assert 'hreflang="he"' in attrs and "Hebrew" in text
+            continue
+        assert 'hreflang="he"' in attrs, href
+        if 'class="brand"' in attrs:
+            assert "Hebrew" in attrs                       # aria-label of the logo link
+        elif m.group(0) not in tables:
+            assert "(Hebrew" in text, (href, text)
+
+
+def test_en_add_link_opens_the_rendered_staples(pages, model):
+    en = pages["/en/"]
+    rendered = re.findall(r'<th scope="row" role="rowheader"><a href="/prices/p/(\d+)/"', en)
+    assert rendered and set(rendered) <= set(sp.EN_STAPLES)
+    links = re.findall(r'href="(/#/add/[^"]*)"', en)
+    assert links == ["/#/add/" + ",".join(rendered)]
+    m = re.search(r'<a class="pr-add" [^>]*>(.*?)</a>', en)
+    assert "Open these products as a list in Slim" in m.group(1)
+    for word in ("total", "save", "saving", "winner", "cheaper", "cheapest"):
+        assert word not in m.group(1).lower()
+    # every price cell carries its chain as the card label, in the fixed order
+    first = re.search(r'(?s)<tbody role="rowgroup"><tr role="row">(.*?)</tr>', en).group(1)
+    labels = re.findall(r'<td role="cell" data-label="([^"]+)">', first)
+    assert labels == [sp.CHAIN_EN.get(c, c) for c in model.chains]
+
+
+def test_disclaimer_and_range_wording():
+    block = sp.source_block("2026-10-06")
+    assert "לפני כל המבצעים (גם מבצעי מועדון וקופון) ובלי דמי משלוח" in block
+    assert "לפני מבצעי מועדון וקופון ובלי" not in block
+    assert sp.price_range(5.9, 6.9) == '<span dir="ltr">5.90–6.90</span> ₪'
+    assert sp.price_range(5.9, 5.9) == "5.90 ₪"
+
+
+def test_product_descriptions_never_imply_open_promos_are_included(pages):
+    for url, html in product_pages(pages).items():
+        desc = unescape(meta(html, "name", "description") or "")
+        assert "לפני מבצעי מועדון וקופון" not in desc, url
+    hub = graph_types(pages["/prices/"])["Dataset"]["description"]
+    assert "לפני כל המבצעים ובלי דמי משלוח" in hub

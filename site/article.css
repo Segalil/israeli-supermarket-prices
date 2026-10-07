@@ -124,3 +124,42 @@
   .pr th { white-space: normal; }
   .pr th[scope="row"] { min-width: 0; }
 }
+/* phones: the /en/ staples table (product + one column per chain) cannot fit
+   375px as a grid, so each row becomes a card — the product on top, then one
+   "chain  price" line per chain in the fixed chain order. Labels come from the
+   cells' data-label; the header row stays for screen readers only. */
+@media (max-width: 560px) {
+  .pr .pr-cards-wrap { overflow-x: visible; }
+  .pr table.pr-cards, .pr table.pr-cards tbody { display: block; min-width: 0; width: 100%; }
+  .pr table.pr-cards caption { display: block; padding: 0 0 10px; }
+  .pr table.pr-cards thead {
+    position: absolute; width: 1px; height: 1px; overflow: hidden;
+    clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap;
+  }
+  .pr table.pr-cards tr {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 9.5rem), 1fr));
+    column-gap: 14px; background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius-sm); padding: 12px 16px; margin: 0 0 12px;
+  }
+  .pr table.pr-cards th[scope="row"] {
+    display: block; grid-column: 1 / -1; padding: 0 0 8px; margin: 0 0 4px;
+    border-bottom: 1px solid var(--divider); min-width: 0;
+  }
+  .pr table.pr-cards td {
+    display: flex; justify-content: space-between; align-items: baseline; gap: 10px;
+    padding: 5px 0; border-bottom: none; min-width: 0;
+  }
+  .pr table.pr-cards td::before { content: attr(data-label); color: var(--text-2); font-size: 13px; }
+}
+/* narrow phones (320px): a long unbroken token in a product name or a promo
+   text ("פרופ/סימפלי", "ויטמיןC+אבץ") set its column's minimum and pushed the
+   price tables ~40px past the screen. Only those free-text cells may break
+   inside a word — chain names, store types and prices never do. */
+@media (max-width: 560px) {
+  .pr td.pr-promo, .pr th[scope="row"] a { overflow-wrap: anywhere; }
+  .pr td > span[dir="ltr"] { white-space: nowrap; }   /* "12.90–16.20" stays whole */
+  .pr table.pr-table td:nth-child(3):not(.pr-miss) { white-space: nowrap; }   /* "6.20 ₪" */
+}
+@media (max-width: 360px) {
+  .pr table:not(.pr-cards) th, .pr table:not(.pr-cards) td { padding-inline: 4px; }
+}

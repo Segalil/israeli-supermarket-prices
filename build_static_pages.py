@@ -68,8 +68,12 @@ def main(argv=None):
     print(f"outliers : {n('outlier_prices_hidden', 0):,} chain prices hidden")
     print(f"changed  : {n('changed_since_previous', 0):,} products since the previous snapshot; "
           f"{n('no_observed_change', 0):,} pages with no observed change (no lastmod)")
+    other = n('other_listing', 0)
     print(f"pages    : {n('product_pages', 0):,} product + {stats['category_pages']} category "
-          f"+ hub + /en/ = {stats['files'] - 1:,} pages, sitemap"
+          f"(>= {sp.CATEGORY_PAGE_MIN} products each; "
+          f"{n('small_categories_listed_as_other', 0)} smaller categories folded into other)"
+          f"{f' + other listing ({other:,} products)' if other else ''}"
+          f" + hub + /en/ = {stats['files'] - 1:,} pages, sitemap"
           f"{' EMPTY (noindex)' if stats['noindex'] else ''}")
     print(f"output   : {stats['bytes'] / 1024 / 1024:.1f} MB under {args.site}/ "
           f"in {time.time() - started:.1f}s"

@@ -7,7 +7,8 @@ price. This module writes plain HTML pages with real, dated, sourced shelf
 prices under the site directory:
 
     /prices/                         daily hub
-    /prices/category/<slug>/         one page per category (1..10)
+    /prices/category/<slug>/         one page per category with >= CATEGORY_PAGE_MIN products
+    /prices/category/other/          every product without a category page
     /prices/p/<barcode>/             one page per selected product
     /en/                             English summary
     /sitemap-prices.xml              every generated URL with its lastmod
@@ -46,9 +47,13 @@ from .basket import (
     PROMO_CLUB,
     PROMO_COUPON,
     PROMO_HEB_TO_COL,
+    BRANCH_ONLY_CHAINS,
+    STORE_BRANCH,
+    STORE_ONLINE,
     attach_promos,
     barcode_key,
     snapshot_date,
+    store_type,
     unit_signature,
 )
 
@@ -79,17 +84,21 @@ PARTIAL_FILE_RATIO = 0.8    # today's rows vs the median of the last 7 files
 CATEGORY_SLUGS = {1: "produce", 2: "dairy", 3: "meat-fish", 4: "bakery",
                   5: "pantry", 6: "snacks", 7: "drinks", 8: "frozen",
                   9: "cleaning", 10: "toiletries"}
+# A category gets its own page only with at least this many products (the
+# produce category holds a handful of processed items: a near-empty page is
+# thin content). Products of uncategorised and too-small categories are listed
+# together on OTHER_URL, so every product page has an inbound link.
+CATEGORY_PAGE_MIN = 8
+OTHER_URL = "/prices/category/other/"
+OTHER_NAME = "מוצרים נוספים"
 
 # The chains the project follows, in the order the hub lists missing ones.
 FIXED_CHAINS = ["שופרסל", "רמי לוי", "ויקטורי", "יינות ביתן / קרפור",
                 "יוחננוף", "אושר עד", "חצי חינם"]
-ONLINE, BRANCH = "online", "branch"
-# Where each chain's prices come from: its online store, or (when the stores
-# file names no online store) one representative branch. Shared with
-# stamp_static.py, which stamps the same split into index.html / llms.txt.
-ONLINE_STORE = ("שופרסל", "רמי לוי", "יינות ביתן / קרפור", "ויקטורי", "חצי חינם")
-BRANCH_STORE = ("יוחננוף", "אושר עד")
-STORE_TYPES = {**{c: ONLINE for c in ONLINE_STORE}, **{c: BRANCH for c in BRANCH_STORE}}
+# Where a chain's prices come from is a fact about the DAY's file (the store id
+# it carried), not about the chain: basket.store_type(chain, store_id) decides,
+# with today's ids from products.json "stores". None (unknown) prints "—".
+ONLINE, BRANCH = STORE_ONLINE, STORE_BRANCH
 STORE_TYPE_HE = {ONLINE: "אונליין", BRANCH: "סניף"}
 STORE_TYPE_HE_LONG = {ONLINE: "חנות אונליין", BRANCH: "סניף מייצג"}
 STORE_TYPE_EN = {ONLINE: "online store", BRANCH: "representative branch"}
@@ -340,7 +349,7 @@ def shekel(p):
 def price_range(lo, hi):
     if abs(lo - hi) < 0.005:
         return shekel(lo)
-    return num(f"{fmt_price(lo)}–{fmt_price(hi)} ₪")
+    return num(f"{fmt_price(lo)}–{fmt_price(hi)}") + " ₪"
 
 
 def time_tag(iso, text):
@@ -361,8 +370,9 @@ def gtin13(key):
     return s if (10 - total % 10) % 10 == digits[12] else None
 
 
-def chain_store_type(chain):
-    return STORE_TYPES.get(chain)
+def chain_store_type(chain, data):
+    """'online' / 'branch' / None for a chain in the dataset of the day."""
+    return store_type(chain, (data.get("stores") or {}).get(chain))
 
 
 def per_measure(price, unit):
@@ -477,13 +487,16 @@ def load_price_history(data_dir, today, candidates, window_days=ENTER_WINDOW_DAY
     Returns {"dates": [...ascending], "enter_counts": {date: {key: n_chains}}
     (only keys at >= min_enter), "prices": {date: {key: {chain: min price}}}
     (candidate keys only; the lowest row per chain, as build_site_data does),
-    "rows": {date: Counter(chain)}}. A row counts toward a key's chains when it
-    has a parseable price > 0.
+    "rows": {date: Counter(chain)}, "stores": {date: {chain: store id}}}. A row
+    counts toward a key's chains when it has a parseable price > 0. The store
+    id is the one the chain's file came from that day (the most common one if
+    a file mixes stores); "" when the snapshot has no store id column.
     """
     start = (_date.fromisoformat(today) - timedelta(days=window_days)).isoformat()
     paths = _snapshot_paths(data_dir, "prices")
     memo = _KeyMemo()
-    hist = {"dates": [], "enter_counts": {}, "prices": {}, "rows": {}, "promos": {}}
+    hist = {"dates": [], "enter_counts": {}, "prices": {}, "rows": {}, "promos": {},
+            "stores": {}}
     for d in sorted(paths):
         if d <= start or d > today:
             continue
@@ -492,10 +505,12 @@ def load_price_history(data_dir, today, candidates, window_days=ENTER_WINDOW_DAY
             ci, bi, pi = (names.index(c) for c in ("chain", "barcode", "price"))
         except ValueError:
             continue                      # not a price snapshot we understand
+        si = names.index("store_id") if "store_id" in names else None
         need = max(ci, bi, pi)
         chains_by_key = defaultdict(set)
         prices = defaultdict(dict)
         rows = Counter()
+        store_rows = defaultdict(Counter)
         for rec in reader:
             if len(rec) <= need:
                 continue
@@ -503,6 +518,8 @@ def load_price_history(data_dir, today, candidates, window_days=ENTER_WINDOW_DAY
             if not chain:
                 continue
             rows[chain] += 1
+            if si is not None and si < len(rec):
+                store_rows[chain][rec[si].strip()] += 1
             try:
                 p = round(float(rec[pi]), 2)
             except ValueError:
@@ -523,6 +540,10 @@ def load_price_history(data_dir, today, candidates, window_days=ENTER_WINDOW_DAY
                                    if len(s) >= min_enter}
         hist["prices"][d] = dict(prices)
         hist["rows"][d] = rows
+        # most common store id per chain; ties broken by the id itself so the
+        # choice never depends on row order
+        hist["stores"][d] = {c: min(cnt.items(), key=lambda kv: (-kv[1], kv[0]))[0]
+                             for c, cnt in store_rows.items()}
     return hist
 
 
@@ -839,11 +860,16 @@ def _promo_descs_by_day(products, hist, chains_common=frozenset()):
 
 
 def last_change(series):
-    """series: [(date, {chain: value})] ascending; a chain missing from a
-    day's dict was absent from that day's file. Returns the newest date on
-    which some chain's value differs from that chain's last known value, or
-    None. The last value is carried across days a chain is absent, so a chain
-    dropping out of a partial file and coming back is not a change."""
+    """series: [(date, {key: value})] ascending; a key missing from a day's
+    dict was absent from that day's file. Returns the newest date on which
+    some key's value differs from that key's last known value, or None. The
+    last value is carried across days a key is absent, so a chain dropping
+    out of a partial file and coming back is not a change.
+
+    attach_history keys by (chain, store id): a day the chain's file came from
+    another store (a fallback branch) is never compared with the usual
+    store's value, and when the chain returns to a store its price is compared
+    with THAT store's own last value."""
     last, newest = {}, None
     for d, vals in series:
         for c, v in vals.items():
@@ -857,45 +883,66 @@ def attach_history(products, chains, hist, today, common_promos=frozenset()):
     """Per product: the 30-day range table, the last shelf-price change and
     the last content change. Returns the hub's list of
     (key, [(chain, old, new)]) shelf-price changes since the previous
-    snapshot, sorted by name, and that previous snapshot's date."""
+    snapshot, sorted by name, and that previous snapshot's date.
+
+    Every comparison is per (chain, store id) — see last_change — and the
+    30-day table only collects days the chain's file came from the same store
+    as today's (for a chain missing from today's file: its latest store)."""
     dates = [d for d in hist["dates"] if d <= today]
+    stores = hist.get("stores") or {}
+
+    def store_of(d, c):
+        return (stores.get(d) or {}).get(c, "")
+
     promo_days = _promo_descs_by_day(products, hist, common_promos)
     window_start = _hist_start(today)
     window = [d for d in dates if d >= window_start]
     prev_day = max((d for d in dates if d < today), default=None)
     order_base = list(chains) + [c for c in FIXED_CHAINS if c not in chains]
+    # the store each chain's range is collected from: today's, else the latest
+    ref_store = {}
+    for d in window:
+        ref_store.update(stores.get(d) or {})
+    ref_store.update(stores.get(today) or {})
 
     for key, pr in products.items():
         shown_chains = [c for c, s in zip(chains, pr.shown) if s is not None]
 
-        # 30 days per chain: the days the chain priced the product in its raw
-        # file, and the range of the values that passed the outlier filter
-        # (None when every one of them was filtered)
+        # 30 days per chain, same store as today: the days the chain priced
+        # the product in its raw file, and the range of the values that passed
+        # the outlier filter (None when every one of them was filtered)
         present, acc = Counter(), defaultdict(list)
         for d in window:
             day = hist["prices"][d].get(key)
-            if day:
-                present.update(day.keys())
-                for c, p in clean_prices(day).items():
+            if not day:
+                continue
+            same = {c for c in day if store_of(d, c) == ref_store.get(c, "")}
+            present.update(same)
+            for c, p in clean_prices(day).items():
+                if c in same:
                     acc[c].append(p)
         order = order_base + sorted(c for c in present if c not in order_base)
         pr.history = [(c, min(acc[c]) if acc[c] else None,
                        max(acc[c]) if acc[c] else None, present[c])
                       for c in order if present.get(c)]
 
-        # the visible "last change" line: shelf prices of the shown chains only
+        # the visible "last change" line: shelf prices of the shown chains only,
+        # keyed by (chain, store id)
         price_series = []
         for d in dates:
             # outliers the page hides must not move its "last change" date
             day = clean_prices(hist["prices"][d].get(key, {}))
-            price_series.append((d, {c: day[c] for c in shown_chains if c in day}))
+            price_series.append((d, {(c, store_of(d, c)): day[c]
+                                     for c in shown_chains if c in day}))
         pr.price_changed = last_change(price_series)
-        # each shown chain's last known (clean) price before today — the "old"
-        # side of the hub's change list, by the same carried-value rule
-        pr.prev_known = {}
+        # each shown chain's last known (clean) price before today AT TODAY'S
+        # STORE — the "old" side of the hub's change list, by the same rule
+        carried = {}
         for d, vals in price_series:
             if d < today:
-                pr.prev_known.update(vals)
+                carried.update(vals)
+        pr.prev_known = {c: carried[(c, store_of(today, c))] for c in shown_chains
+                         if (c, store_of(today, c)) in carried}
 
         # sitemap lastmod / dateModified: shelf prices or the promo text shown
         promo_changed = None
@@ -907,7 +954,8 @@ def attach_history(products, chains, hist, today, common_promos=frozenset()):
                     continue                      # no promo snapshot that day
                 per = per_day.get(key, {})
                 day = hist["prices"][d].get(key, {})
-                promo_series.append((d, {c: per.get(c) or "" for c in shown_chains if c in day}))
+                promo_series.append((d, {(c, store_of(d, c)): per.get(c) or ""
+                                         for c in shown_chains if c in day}))
             promo_changed = last_change(promo_series)
         pr.content_modified = max((d for d in (pr.price_changed, promo_changed) if d),
                                   default=None)
@@ -976,9 +1024,11 @@ def page_shell(*, lang, url, title, description, og_type, json_ld, crumbs, body,
     robots = "noindex, follow" if noindex else "index, follow"
     full_url = BASE + url
     crumb_html = []
+    # every page outside /en/ is Hebrew-only: say so on the English page's links
+    crumb_lang = "" if he else ' hreflang="he"'
     for i, (label, href) in enumerate(crumbs):
         if href and i < len(crumbs) - 1:
-            crumb_html.append(f'<a href="{href}">{esc(label)}</a>')
+            crumb_html.append(f'<a href="{href}"{crumb_lang}>{esc(label)}</a>')
         else:
             crumb_html.append(f'<span aria-current="page">{esc(label)}</span>')
     year = date_iso[:4]
@@ -996,7 +1046,8 @@ def page_shell(*, lang, url, title, description, og_type, json_ld, crumbs, body,
             f'<p>© {year} סלים</p></footer>')
         locale = "he_IL"
     else:
-        top_cta = '<a class="art-topbar-cta" href="/#/build">Open the free app →</a>'
+        top_cta = ('<a class="art-topbar-cta" href="/#/build" hreflang="he">'
+                   "Open the free app (Hebrew) →</a>")
         skip = "Skip to main content"
         crumbs_label = "Breadcrumbs"
         foot = (
@@ -1005,10 +1056,11 @@ def page_shell(*, lang, url, title, description, og_type, json_ld, crumbs, body,
             'The price that binds is the one at the chain.</p>'
             f'<p>{esc(NO_AFFILIATION_EN)}</p>'
             f'<p lang="he" dir="rtl">{esc(NO_AFFILIATION_HE)}</p>'
-            '<nav class="pr-foot-nav" aria-label="Site links"><a href="/">Home</a> · '
+            '<nav class="pr-foot-nav" aria-label="Site links"><a href="/" hreflang="he">Home (Hebrew)</a> · '
             '<a href="/prices/" hreflang="he">Prices (Hebrew)</a> · '
             '<a href="/articles/" hreflang="he">Guides (Hebrew)</a> · '
-            '<a href="/about/">About &amp; methodology</a> · <a href="/privacy.html">Privacy</a></nav>'
+            '<a href="/about/" hreflang="he">About &amp; methodology (Hebrew)</a> · '
+            '<a href="/privacy.html" hreflang="he">Privacy (Hebrew)</a></nav>'
             f'<p>© {year} Slim</p></footer>')
         locale = "en_US"
     head = (
@@ -1035,12 +1087,13 @@ def page_shell(*, lang, url, title, description, og_type, json_ld, crumbs, body,
         '<link rel="stylesheet" href="/article.css">\n'
         f'<script type="application/ld+json">{_json_ld(json_ld)}</script>\n'
         "</head>\n")
-    brand_label = "סלים — לעמוד הבית" if he else "Slim — home"
+    brand_label = "סלים — לעמוד הבית" if he else "Slim — home (Hebrew)"
+    brand_lang = "" if he else ' hreflang="he"'
     return (
         head + "<body>\n"
         f'<a class="skip-link" href="#main">{skip}</a>\n'
         '<header class="art-topbar">'
-        f'<a class="brand" href="/" aria-label="{brand_label}">{_BRAND_SVG}'
+        f'<a class="brand" href="/"{brand_lang} aria-label="{brand_label}">{_BRAND_SVG}'
         '<span class="brand-name" dir="ltr">ליםSlim</span></a>'
         f"{top_cta}</header>\n"
         '<main id="main" class="art pr">\n'
@@ -1053,7 +1106,8 @@ def source_block(date_iso, extra=""):
     return (
         '<div class="art-note pr-src">'
         f"<p>המחירים בעמוד הם מחירי מדף כפי שפורסמו בקובצי המחירים של הרשתות לתאריך "
-        f"{time_tag(date_iso, date_he(date_iso))} — לפני מבצעי מועדון וקופון ובלי דמי משלוח. "
+        f"{time_tag(date_iso, date_he(date_iso))} — לפני כל המבצעים (גם מבצעי מועדון וקופון) "
+        "ובלי דמי משלוח. "
         "המחיר המחייב הוא המחיר אצל הרשת.</p>"
         f'<p>המקור: <a href="{GOV_URL}">קובצי שקיפות המחירים שהרשתות מפרסמות לפי חוק</a> '
         '(תקנות שקיפות המחירים, חוק המזון). '
@@ -1082,10 +1136,10 @@ def _webpage_ld(page_type, url, name, date_mod, lang="he-IL", extra=None):
     return node
 
 
-def _store_label(chain, long=False):
-    t = chain_store_type(chain)
+def _store_label(chain, data, long=False):
+    t = chain_store_type(chain, data)
     if not t:
-        return ""
+        return "—"
     return (STORE_TYPE_HE_LONG if long else STORE_TYPE_HE)[t]
 
 
@@ -1122,11 +1176,21 @@ def product_title(title_name, today):
     return core + ("…" if cut else "") + suffix
 
 
+def category_url(idx, products_by_cat):
+    """The category page URL, or None when the category has no page (index 0,
+    or fewer than CATEGORY_PAGE_MIN products)."""
+    slug = CATEGORY_SLUGS.get(idx)
+    if not slug or len(products_by_cat.get(idx, ())) < CATEGORY_PAGE_MIN:
+        return None
+    return f"/prices/category/{slug}/"
+
+
 def render_product(pr, chains, data, products_by_cat, noindex):
     today = data["date"]
     cat_name = CATEGORIES[pr.cat] if 0 <= pr.cat < len(CATEGORIES) else ""
-    cat_slug = CATEGORY_SLUGS.get(pr.cat)
-    cat_url = f"/prices/category/{cat_slug}/" if cat_slug else None
+    # the category is named (lede, breadcrumb, related, Product.category) only
+    # when its page exists; otherwise the product is on the OTHER_URL listing
+    cat_url = category_url(pr.cat, products_by_cat)
     shown = [(c, s) for c, s in zip(chains, pr.shown) if s is not None]
 
     title = product_title(pr.title_name, today)
@@ -1149,7 +1213,7 @@ def render_product(pr, chains, data, products_by_cat, noindex):
     description = fit_description(head + " · ".join(parts) + tail, (
         "מקור: קובצי שקיפות המחירים של הרשתות.",
         "המחיר המחייב הוא המחיר אצל הרשת.",
-        "מחירי מדף לפני מבצעי מועדון וקופון."))
+        "מחירי מדף לפני מבצעים."))
 
     # lede (no size line when the name states a different size: the page
     # would contradict itself, and per-unit prices would use the wrong one)
@@ -1167,7 +1231,7 @@ def render_product(pr, chains, data, products_by_cat, noindex):
     show_measure = not pr.size_conflict and any(per_measure(s, pr.unit) for _c, s in shown)
     rows = []
     for i, c in enumerate(chains):
-        label = _store_label(c)
+        label = _store_label(c, data)
         raw, s = pr.prices[i], pr.shown[i]
         cells = [f'<th scope="row">{esc(c)}</th>', f"<td>{esc(label)}</td>"]
         if s is not None:
@@ -1212,8 +1276,9 @@ def render_product(pr, chains, data, products_by_cat, noindex):
             f"<td>{n}</td></tr>" for c, lo, hi, n in pr.history)
         hist_html = (
             '<h2 id="history">טווח מחירי המדף ב־30 הימים האחרונים</h2>'
-            "<p>המחיר הנמוך והגבוה שנרשמו בקובצי המחירים היומיים של כל רשת, ובכמה ימים "
-            "המוצר הופיע בקובץ. מחיר שרחוק מאוד משאר הרשתות באותו יום לא נכלל בטווח"
+            "<p>המחיר הנמוך והגבוה שנרשמו בקובצי המחירים היומיים של כל רשת, באותה חנות כמו "
+            "היום, ובכמה ימים המוצר הופיע בקובץ של אותה חנות. ימים שבהם קובץ הרשת הגיע "
+            "מחנות אחרת לא נכללים. מחיר שרחוק מאוד משאר הרשתות באותו יום לא נכלל בטווח"
             + ("; קו מפריד מסמן רשת שכל המחירים שלה בתקופה היו כאלה"
                if any(lo is None for _c, lo, _h, _n in pr.history) else "") + ".</p>"
             '<div class="art-table-wrap"><table>'
@@ -1302,16 +1367,36 @@ def _related(pr, siblings):
 
 
 # --- category page ----------------------------------------------------------------
-def render_category(idx, items, chains, data, noindex):
+def render_category(name, url, items, chains, data, noindex, other=False):
+    """A dated, sourced listing of product pages, sorted by name, no totals:
+    one category page, or (other=True) the OTHER_URL listing of the products
+    that have no category page."""
     today = data["date"]
-    name = CATEGORIES[idx]
-    url = f"/prices/category/{CATEGORY_SLUGS[idx]}/"
-    title = f"מחירי {name} ברשתות — {date_he_short(today)} | סלים"
-    description = fit_description(
-        f"מחירי המדף של {fmt_int(len(items))} מוצרים בקטגוריה {name} לפי קובצי המחירים "
-        f"של הרשתות מ־{date_he_short(today)}: טווח מחיר וקישור למחיר בכל רשת.",
-        ("מחירי מדף לפני מבצעים ובלי משלוח.", "מקור: קובצי שקיפות המחירים.",
-         "המחיר המחייב הוא המחיר אצל הרשת."))
+    n = len(items)
+    if other:
+        title = f"{name} — מחירים ברשתות {date_he_short(today)} | סלים"
+        h1 = f"{name} — מחירי מדף ברשתות, {date_he(today)}"
+        what = "מוצרים שאין להם עמוד קטגוריה"
+        desc_core = (f"מחירי המדף של {fmt_int(n)} {what}, לפי קובצי המחירים של הרשתות "
+                     f"מ־{date_he_short(today)}: טווח מחיר וקישור למחיר בכל רשת.")
+        lede = (f"{num(fmt_int(n))} מוצרים שנמכרים ברוב הרשתות ואינם מופיעים באחד מעמודי "
+                "הקטגוריות, עם טווח מחירי המדף שלהם בקובצי המחירים של היום. ")
+        h2 = "כל המוצרים ברשימה"
+        caption = f"{esc(name)}, לפי סדר האלף־בית"
+        list_name = f"מחירי {name}"
+    else:
+        title = f"מחירי {name} ברשתות — {date_he_short(today)} | סלים"
+        h1 = f"מחירי {name} ברשתות — {date_he(today)}"
+        desc_core = (f"מחירי המדף של {fmt_int(n)} מוצרים בקטגוריה {name} לפי קובצי המחירים "
+                     f"של הרשתות מ־{date_he_short(today)}: טווח מחיר וקישור למחיר בכל רשת.")
+        lede = (f"{num(fmt_int(n))} מוצרים בקטגוריה {esc(name)} שנמכרים ברוב הרשתות, עם "
+                "טווח מחירי המדף שלהם בקובצי המחירים של היום. ")
+        h2 = "כל המוצרים בקטגוריה"
+        caption = f"מוצרים בקטגוריה {esc(name)}, לפי סדר האלף־בית"
+        list_name = f"מחירי {name}"
+    description = fit_description(desc_core, (
+        "מחירי מדף לפני מבצעים ובלי משלוח.", "מקור: קובצי שקיפות המחירים.",
+        "המחיר המחייב הוא המחיר אצל הרשת."))
     rows = []
     for pr in items:
         vals = [s for s in pr.shown if s is not None]
@@ -1321,14 +1406,13 @@ def render_category(idx, items, chains, data, noindex):
             f"<td>{esc(display_size(pr)) or '—'}</td><td>{in_file}</td>"
             f"<td>{price_range(min(vals), max(vals))}</td></tr>")
     body = (
-        f"<h1>מחירי {esc(name)} ברשתות — {esc(date_he(today))}</h1>"
-        f'<p class="art-lede">{num(fmt_int(len(items)))} מוצרים בקטגוריה {esc(name)} שנמכרים '
-        "ברוב הרשתות, עם טווח מחירי המדף שלהם בקובצי המחירים של היום. "
+        f"<h1>{esc(h1)}</h1>"
+        f'<p class="art-lede">{lede}'
         "לכל מוצר יש עמוד עם המחיר בכל רשת ועם טווח המחירים בחודש האחרון.</p>"
         f"{source_block(today)}"
-        f'<h2 id="products">כל המוצרים בקטגוריה</h2>'
+        f'<h2 id="products">{h2}</h2>'
         '<div class="art-table-wrap"><table>'
-        f"<caption>מוצרים בקטגוריה {esc(name)}, לפי סדר האלף־בית</caption>"
+        f"<caption>{caption}</caption>"
         '<thead><tr><th scope="col">מוצר</th><th scope="col">גודל</th>'
         '<th scope="col">רשתות עם מחיר</th><th scope="col">טווח מחירי מדף</th></tr></thead>'
         f'<tbody>{"".join(rows)}</tbody></table></div>'
@@ -1339,7 +1423,7 @@ def render_category(idx, items, chains, data, noindex):
     ld = [
         _webpage_ld("CollectionPage", url, title, today),
         _crumb_ld([("סלים", "/"), ("מחירים", "/prices/"), (name, None)]),
-        {"@type": "ItemList", "name": f"מחירי {name}", "numberOfItems": len(items),
+        {"@type": "ItemList", "name": list_name, "numberOfItems": n,
          "itemListElement": [{"@type": "ListItem", "position": i, "url": BASE + pr.url(),
                               "name": pr.title_name}
                              for i, pr in enumerate(items[:ITEMLIST_MAX], 1)]},
@@ -1347,6 +1431,13 @@ def render_category(idx, items, chains, data, noindex):
     return page_shell(lang="he", url=url, title=title, description=description,
                       og_type="website", json_ld=ld, crumbs=crumbs, body=body,
                       date_iso=today, noindex=noindex)
+
+
+def other_items(by_cat):
+    """The products without a category page, sorted by name (OTHER_URL)."""
+    out = [pr for idx, items in by_cat.items() if category_url(idx, by_cat) is None
+           for pr in items]
+    return sorted(out, key=_sort_key)
 
 
 # --- hub ---------------------------------------------------------------------------
@@ -1415,7 +1506,7 @@ def render_hub(products, by_cat, chains, data, hist, changes, prev_day, noindex,
         ("המחיר המחייב הוא המחיר אצל הרשת.", "מחירי מדף לפני מבצעים ובלי משלוח."))
 
     chain_rows = "".join(
-        f'<tr><th scope="row">{esc(c)}</th><td>{esc(_store_label(c, True))}</td>'
+        f'<tr><th scope="row">{esc(c)}</th><td>{esc(_store_label(c, data, True))}</td>'
         f"<td>{num(fmt_int(facts['per_chain'][i]))}</td></tr>" for i, c in enumerate(chains))
     missing = [c for c in FIXED_CHAINS if c not in chains]
     missing_html = ""
@@ -1425,13 +1516,19 @@ def render_hub(products, by_cat, chains, data, hist, changes, prev_day, noindex,
     partial = partial_chains(hist, chains, today)
     partial_html = "".join(
         f'<p class="pr-warn">הקובץ של {esc(c)} לא נקלט במלואו היום.</p>' for c in partial)
-    branch_chains = [c for c in chains if chain_store_type(c) == BRANCH]
+    def he_list(names):
+        return (", ".join(names[:-1]) + " ו" + names[-1]) if len(names) > 1 else names[0]
+
+    branch_chains = [c for c in chains if chain_store_type(c, data) == BRANCH]
+    no_online = [c for c in branch_chains if c in BRANCH_ONLY_CHAINS]
+    fallback = [c for c in branch_chains if c not in BRANCH_ONLY_CHAINS]
     branch_note = ""
-    if branch_chains:
-        names = (", ".join(branch_chains[:-1]) + " ו" + branch_chains[-1]
-                 if len(branch_chains) > 1 else branch_chains[0])
-        branch_note = (f"<p>אצל {esc(names)} לא זוהתה חנות אונליין בקובץ החנויות, "
-                       "ולכן המחירים שלהן לקוחים מסניף מייצג אחד.</p>")
+    if no_online:
+        branch_note += (f"<p>אצל {esc(he_list(no_online))} לא זוהתה חנות אונליין בקובץ "
+                        "החנויות, ולכן המחירים לקוחים מסניף מייצג אחד.</p>")
+    if fallback:
+        branch_note += (f"<p>אצל {esc(he_list(fallback))} קובץ המחירים של היום הגיע מסניף "
+                        "ולא מהחנות האונליין, ולכן המחירים בעדכון הזה הם של אותו סניף.</p>")
 
     by_n = facts["by_n"]
     facts_html = (
@@ -1446,12 +1543,13 @@ def render_hub(products, by_cat, chains, data, hist, changes, prev_day, noindex,
         "משלהם.</li></ul>")
 
     cat_items = "".join(
-        f'<li><a href="/prices/category/{CATEGORY_SLUGS[i]}/">{esc(CATEGORIES[i])}</a> — '
+        f'<li><a href="{category_url(i, by_cat)}">{esc(CATEGORIES[i])}</a> — '
         f"{num(fmt_int(len(by_cat[i])))} מוצרים</li>"
-        for i in sorted(CATEGORY_SLUGS) if by_cat.get(i))
-    other = len(by_cat.get(0, []))
+        for i in sorted(CATEGORY_SLUGS) if category_url(i, by_cat))
+    other = len(other_items(by_cat))
     if other:
-        cat_items += f"<li>ללא קטגוריה — {num(fmt_int(other))} מוצרים (עמודי המוצר עצמם זמינים)</li>"
+        cat_items += (f'<li><a href="{OTHER_URL}">{OTHER_NAME}</a> — '
+                      f"{num(fmt_int(other))} מוצרים</li>")
 
     changes_html = ""
     if prev_day:
@@ -1513,7 +1611,7 @@ def render_hub(products, by_cat, chains, data, hist, changes, prev_day, noindex,
     dataset_desc = (
         f"מחירי המדף היומיים של {fmt_int(facts['total'])} מוצרים ב־{len(chains)} רשתות מזון "
         f"בישראל, מתוך קובצי שקיפות המחירים שהרשתות מפרסמות לפי חוק המזון, לתאריך {today}. "
-        "המחירים הם לפני מבצעי מועדון וקופון ובלי דמי משלוח.")
+        "המחירים הם לפני כל המבצעים ובלי דמי משלוח.")
     ld = [
         _webpage_ld("CollectionPage", url, title, today),
         _crumb_ld([("סלים", "/"), ("מחירים", None)]),
@@ -1540,29 +1638,41 @@ def render_en(products, chains, data, noindex):
         ("No signup.", "Prices before promotions and delivery."))
     chain_rows = "".join(
         f'<tr><th scope="row">{esc(CHAIN_EN.get(c, c))} <span lang="he" dir="rtl">({esc(c)})</span></th>'
-        f"<td>{esc(STORE_TYPE_EN.get(chain_store_type(c), '—'))}</td></tr>" for c in chains)
+        f"<td>{esc(STORE_TYPE_EN.get(chain_store_type(c, data), '—'))}</td></tr>" for c in chains)
     staples = [(b, en) for b, en in EN_STAPLES.items() if b in products]
     staples.sort(key=lambda be: (be[1].lower(), be[0]))
     rows = []
     for b, en in staples:
         pr = products[b]
-        cells = "".join(f"<td>{fmt_price(s) if s is not None else '—'}</td>" for s in pr.shown)
-        rows.append(f'<tr><th scope="row"><a href="{pr.url()}" hreflang="he">'
+        # data-label: on a phone each row renders as a labelled card (article.css);
+        # explicit roles keep the table semantics once the CSS makes it blocks
+        cells = "".join(f'<td role="cell" data-label="{attr(CHAIN_EN.get(c, c))}">'
+                        f"{fmt_price(s) if s is not None else '—'}</td>"
+                        for c, s in zip(chains, pr.shown))
+        rows.append(f'<tr role="row"><th scope="row" role="rowheader"><a href="{pr.url()}" hreflang="he">'
                     f'<span lang="he" dir="rtl">{esc(pr.name)}</span></a>'
                     f'<span class="pr-gloss">{esc(en)}</span></th>{cells}</tr>')
-    chain_heads = "".join(f'<th scope="col">{esc(CHAIN_EN.get(c, c))}</th>' for c in chains)
+    chain_heads = "".join(f'<th scope="col" role="columnheader">{esc(CHAIN_EN.get(c, c))}</th>'
+                          for c in chains)
     staples_html = ""
     if rows:
+        # one neutral link that opens the rendered staples as a list in the app
+        add_link = "/#/add/" + ",".join(b for b, _en in staples)
         staples_html = (
             '<h2 id="staples">Staple prices in today\'s files</h2>'
             f"<p>Shelf prices in shekels (₪) for {len(rows)} everyday products, as published "
             f"for {esc(date_en(today))}. Chains are always listed in the same order, not by price; "
             "a dash means no price is shown for that chain. Each product name links to its Hebrew "
             "price page with a 30-day range per chain.</p>"
-            '<div class="art-table-wrap"><table>'
-            f"<caption>Shelf prices (₪) by chain, {time_tag(today, date_en(today))}</caption>"
-            f'<thead><tr><th scope="col">Product</th>{chain_heads}</tr></thead>'
-            f'<tbody>{"".join(rows)}</tbody></table></div>')
+            '<div class="art-table-wrap pr-cards-wrap">'
+            '<table class="pr-cards" role="table" aria-labelledby="staples-caption">'
+            f'<caption id="staples-caption">Shelf prices (₪) by chain, '
+            f"{time_tag(today, date_en(today))}</caption>"
+            '<thead role="rowgroup"><tr role="row"><th scope="col" role="columnheader">Product</th>'
+            f"{chain_heads}</tr></thead>"
+            f'<tbody role="rowgroup">{"".join(rows)}</tbody></table></div>'
+            f'<p><a class="pr-add" href="{add_link}" hreflang="he">Open these products as a '
+            "list in Slim (Hebrew app) →</a></p>")
     missing = [c for c in FIXED_CHAINS if c not in chains]
     missing_html = ""
     if missing:
@@ -1572,15 +1682,16 @@ def render_en(products, chains, data, noindex):
         f"<h1>Israeli supermarket prices, compared — official price-file data for "
         f"{esc(date_en(today))}</h1>"
         '<p class="art-lede">Slim (סלים) is a free Hebrew web app that prices one grocery list '
-        "across the online stores of Israel's leading supermarket chains — including promotions "
-        "and estimated delivery fees. No signup.</p>"
+        "across Israel's leading supermarket chains — including promotions and estimated "
+        "delivery fees. No signup.</p>"
         f'<p class="art-meta">Data date: {time_tag(today, date_en(today))}</p>'
         '<div class="art-note pr-src"><p>These are shelf prices as published in the chains\' '
-        f"price files for {time_tag(today, date_en(today))} — before club and coupon promotions, "
-        "without delivery. The price that binds is the one at the chain. "
-        f'Source: <a href="{GOV_URL}" hreflang="he">the price-transparency regulations '
-        "(Israel's Food Act)</a>. "
-        '<a href="/about/">How Slim collects and presents the data</a>.</p></div>'
+        f"price files for {time_tag(today, date_en(today))} — before any promotion (including "
+        "club and coupon offers), without delivery. The price that binds is the one at the "
+        f'chain. Source: <a href="{GOV_URL}" hreflang="he">the price-transparency regulations '
+        "(Israel's Food Act; Hebrew)</a>. "
+        '<a href="/about/" hreflang="he">How Slim collects and presents the data (Hebrew)</a>.'
+        "</p></div>"
         '<h2 id="law">Where the prices come from</h2>'
         "<p>Under Israel's Food Act price-transparency regulations, large grocery chains must "
         "publish their full price files — every product, every store — in a standard format, "
@@ -1591,8 +1702,9 @@ def render_en(products, chains, data, noindex):
         f"<caption>Chains in the price files of {time_tag(today, date_en(today))}</caption>"
         '<thead><tr><th scope="col">Chain</th><th scope="col">Store type</th></tr></thead>'
         f"<tbody>{chain_rows}</tbody></table></div>{missing_html}"
-        "<p>Where a chain's stores file names no online store, its prices come from one "
-        "representative branch.</p>"
+        "<p>The store type is read from each chain's file of the day: where a chain's stores "
+        "file names no online store, or the day's file came from a branch, its prices are "
+        "those of one branch.</p>"
         f"{staples_html}"
         '<h2 id="method">Methodology in short</h2>'
         "<ul><li>The same product is matched across chains by its barcode.</li>"
@@ -1600,8 +1712,9 @@ def render_en(products, chains, data, noindex):
         "shown — it is usually a file error or a different unit.</li>"
         "<li>No totals and no rankings here: a basket's cost depends on the whole list, the "
         "promotions and the delivery fee, which is what the app works out.</li></ul>"
-        '<p><a href="/">Open Slim</a> (Hebrew) · <a href="/prices/" hreflang="he">Daily price '
-        'pages</a> (Hebrew) · <a href="/about/">About and methodology</a></p>')
+        '<p><a href="/" hreflang="he">Open Slim (Hebrew)</a> · <a href="/prices/" hreflang="he">'
+        'Daily price pages (Hebrew)</a> · <a href="/about/" hreflang="he">About and methodology '
+        "(Hebrew)</a></p>")
     crumbs = [("Slim", "/"), ("English", None)]
     ld = [
         _webpage_ld("WebPage", url, title, today, lang="en"),
@@ -1653,6 +1766,13 @@ class Model:
             self.by_cat[pr.cat].append(pr)
         for items in self.by_cat.values():
             items.sort(key=_sort_key)
+        # (name, url, items, other) for every listing page that gets written:
+        # the categories with >= CATEGORY_PAGE_MIN products, then OTHER_URL
+        self.listings = [(CATEGORIES[i], category_url(i, self.by_cat), self.by_cat[i], False)
+                         for i in sorted(CATEGORY_SLUGS) if category_url(i, self.by_cat)]
+        self.other = other_items(self.by_cat)
+        if self.other:
+            self.listings.append((OTHER_NAME, OTHER_URL, self.other, True))
 
 
 def prepare(data_dir="data", products_path=os.path.join("site", "data", "products.json.gz")):
@@ -1696,14 +1816,11 @@ def write_pages(model, site_dir="site", noindex=None):
         m.products, m.by_cat, chains, m.data, m.hist, m.changes, m.prev_day, noindex,
         m.common_promos))
     n_cat = 0
-    for idx in sorted(CATEGORY_SLUGS):
-        if not m.by_cat.get(idx):
-            continue
-        url = f"/prices/category/{CATEGORY_SLUGS[idx]}/"
-        total_bytes += _write(site_dir, url,
-                              render_category(idx, m.by_cat[idx], chains, m.data, noindex))
+    for name, url, items, other in m.listings:
+        total_bytes += _write(site_dir, url, render_category(
+            name, url, items, chains, m.data, noindex, other=other))
         sitemap.append((url, today))
-        n_cat += 1
+        n_cat += not other
     total_bytes += _write(site_dir, "/en/", render_en(m.products, chains, m.data, noindex))
     sitemap.append(("/en/", today))
     for key in sorted(m.products):
@@ -1715,7 +1832,10 @@ def write_pages(model, site_dir="site", noindex=None):
 
     stats = dict(m.stats)
     stats["category_pages"] = n_cat
-    stats["files"] = 1 + n_cat + 1 + len(m.products) + 1
+    stats["other_listing"] = len(m.other)
+    stats["small_categories_listed_as_other"] = sum(
+        1 for i in CATEGORY_SLUGS if m.by_cat.get(i) and not category_url(i, m.by_cat))
+    stats["files"] = 1 + len(m.listings) + 1 + len(m.products) + 1
     stats["bytes"] = total_bytes
     stats["date"] = today
     stats["noindex"] = bool(noindex)
