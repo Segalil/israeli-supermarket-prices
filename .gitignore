@@ -19,3 +19,7 @@ env/
 .vscode/
 .claude/
 logging.log
+# generated at deploy time by build_static_pages.py
+site/prices/
+site/en/
+site/sitemap-prices.xml

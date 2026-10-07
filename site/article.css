@@ -87,3 +87,25 @@
   .art-lede { font-size: 17px; }
   .art-more, .art-hub-lede, .art-hub-grid { padding-inline: 18px; }
 }
+
+/* ---- Static price pages (/prices/, /en/) ------------------------------------
+   Generated at deploy time by build_static_pages.py (israeli_prices/
+   static_pages.py). Append-only block: tables, captions, notes. */
+.pr table caption { caption-side: top; text-align: start; font-weight: 700; color: var(--text); padding: 0 0 8px; font-size: 15px; }
+.pr th[scope="row"] { font-weight: 600; white-space: normal; min-width: 8em; }
+.pr td { font-variant-numeric: tabular-nums; }
+.pr td.pr-miss { color: var(--text-3); font-size: 14px; }
+.pr td.pr-promo { font-size: 14px; }
+.pr .pr-promo-det, .pr .pr-gloss { display: block; font-size: 13px; color: var(--text-2); font-weight: 400; }
+.pr .pr-fine { font-size: 13px; color: var(--text-3); }
+.pr .pr-warn { background: var(--miss-bg); color: var(--miss-ink); border-radius: var(--radius-sm); padding: 10px 16px; }
+.pr-src { font-size: 15px; }
+.pr-src p { font-size: 15px; }
+.pr-related { columns: 2; column-gap: 28px; }
+.pr-related li { break-inside: avoid; }
+.pr-foot-nav { font-size: 13px; color: var(--text-3); margin: 0 0 6px; }
+.pr-foot-nav a { color: var(--text-2); }
+[dir="ltr"] .art th, [dir="ltr"] .art td { text-align: left; }
+@media (max-width: 700px) {
+  .pr-related { columns: 1; }
+}
